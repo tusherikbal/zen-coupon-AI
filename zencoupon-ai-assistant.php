@@ -1,10 +1,10 @@
 <?php
 /**
  * Plugin Name: ZenCoupon AI Assistant
- * Plugin URI: https://github.com/yourusername/zencoupon-ai
+ * Plugin URI: https://github.com/tusherikbal/zen-coupon-AI
  * Description: Generate and manage WooCommerce coupons using AI with natural language commands.
  * Version: 1.0.1
- * Author: Your Name
+ * Author: Tusher Ikbal
  * Author URI: https://tusherikbal.online
  * License: GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
