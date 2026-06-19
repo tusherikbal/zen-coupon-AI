@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ZenCoupon AI Assistant
  * Description: Generate and manage WooCommerce coupons using AI with natural language commands.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Tusher Ikbal
  * Author URI: https://tusherikbal.online
  * License: GPL-2.0-or-later
