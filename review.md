@@ -148,19 +148,55 @@ This architecture makes it easier to add more providers in the future, such as C
 
 ## Future Feature Ideas
 
-- Scheduled coupon campaign
-- Automatic coupon email to customers
-- Abandoned cart coupon automation
-- Birthday coupon automation
-- First-order discount automation
-- Win-back coupon for inactive customers
-- Customer segment based coupons
-- Coupon performance analytics
-- Email template builder
-- Mailchimp/Klaviyo/FluentCRM integration
-- Bulk coupon generation
-- AI campaign recommendation
-- Auto-expiring campaign dashboard
+1. AI Campaign Builder 
+
+	- Coupon
+	- Campaign name
+	- Expiry date
+	- Usage limit
+	- Customer target
+	- Suggested email text
+	- Social post copy
+
+2. Abandoned Cart Coupon Automation
+	- Customer cart abandon করলে automatic coupon generate করে email/send করা।
+3. First Order Coupon
+  - New customer-এর জন্য automatic first-order coupon।
+4. Customer Segment Based Coupons
+    AI দিয়ে segment বানানো:
+    	- VIP customers
+    	- Inactive customers
+    	- High-spending customers
+    	- New customers
+    	- Repeat buyers
+    	- Category-based buyers
+
+5. Birthday / Anniversary Coupon
+  - Customer birthday বা registration anniversary অনুযায়ী coupon auto-create/send।
+
+6. Bulk Coupon Generator
+  - একসাথে 100/500/1000 unique coupon generate করার option।
+Useful for:
+	- Influencer campaign
+	- Affiliate campaign
+	- Offline flyer
+	- Event campaign
+	- Email marketing
+	- Giveaway
+
+7. Auto Apply Coupon
+	- Customer coupon code type না করলেও condition match করলে automatic apply হবে।
+8. URL Coupon / Coupon Link
+	- একটা special link দিলে coupon auto apply হবে।
+9. AI Email Copy Generator
+	- Coupon create করার পর plugin email copy generate করবে।
+
+10. AI Social Post Generator
+	- Coupon campaign থেকে Facebook/Instagram/WhatsApp post auto-generate।
+11. Analytics Features
+12. AI Recommendation Features
+13. Integration Ideas (crm/rest api)
+
 
 ## One-Line Pitch
 
