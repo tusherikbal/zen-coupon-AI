@@ -203,13 +203,11 @@ function zencoupon_ai_assistant_activate(): void {
     $defaults = array(
 
         'ai_provider'       => 'groq',
-
         'groq_api_key'      => '',
-        'groq_model_name'   => 'llama3-8b-8192',
-
+        'groq_model_name'   => 'llama-3.1-8b-instant',
+        'openai_api_key'    => '',
+        'openai_model_name' => 'gpt-5.5',
         'gemini_api_key'    => '',
-
-        // IMPORTANT FIX
         'gemini_model_name' => 'gemini-2.5-flash',
     );
 
@@ -222,14 +220,14 @@ function zencoupon_ai_assistant_activate(): void {
     );
 
     /**
-     * Force Replace Deprecated Gemini Model
+     * Force Replace Deprecated Groq Model
      */
     if (
-        empty( $settings['gemini_model_name'] ) ||
-        'gemini-pro' === $settings['gemini_model_name']
+        empty( $settings['groq_model_name'] ) ||
+        'llama3-8b-8192' === $settings['groq_model_name']
     ) {
 
-        $settings['gemini_model_name'] = 'gemini-2.5-flash';
+        $settings['groq_model_name'] = 'llama-3.1-8b-instant';
     }
 
     update_option(

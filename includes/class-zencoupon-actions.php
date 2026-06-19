@@ -130,6 +130,116 @@ class ZenCoupon_AI_Assistant_Actions {
         );
     }
 
+    public function update_coupon( array $data ): array {
+        if ( ! class_exists( 'WC_Coupon' ) ) {
+            return array( 'error' => 'WooCommerce is required to update coupons.' );
+        }
+
+        $coupon_id = $this->resolve_coupon_id( $data );
+
+        if ( $coupon_id <= 0 || 'shop_coupon' !== get_post_type( $coupon_id ) ) {
+            return array( 'error' => 'Invalid coupon ID or code for update.' );
+        }
+
+        $coupon = new WC_Coupon( $coupon_id );
+
+        if ( isset( $data['code'] ) && '' !== trim( (string) $data['code'] ) ) {
+            $code = sanitize_text_field( $data['code'] );
+            $coupon->set_code( $code );
+            wp_update_post( array(
+                'ID'         => $coupon_id,
+                'post_title' => $code,
+                'post_name'  => sanitize_title( $code ),
+            ) );
+        }
+
+        if ( isset( $data['amount'] ) ) {
+            $amount = floatval( $data['amount'] );
+            if ( $amount <= 0 ) {
+                return array( 'error' => 'Coupon amount must be greater than zero.' );
+            }
+            $coupon->set_amount( wc_format_decimal( $amount ) );
+        }
+
+        if ( isset( $data['discount_type'] ) ) {
+            $discount_type = $this->normalize_discount_type( sanitize_text_field( $data['discount_type'] ) );
+            if ( ! in_array( $discount_type, array( 'percent', 'fixed_cart', 'fixed_product' ), true ) ) {
+                return array( 'error' => 'Discount type must be percentage or fixed.' );
+            }
+            $coupon->set_discount_type( $discount_type );
+        }
+
+        if ( isset( $data['minimum_amount'] ) ) {
+            $coupon->set_minimum_amount( floatval( $data['minimum_amount'] ) );
+        }
+
+        if ( isset( $data['maximum_amount'] ) ) {
+            $coupon->set_maximum_amount( floatval( $data['maximum_amount'] ) );
+        }
+
+        if ( isset( $data['exclude_sale_items'] ) ) {
+            $coupon->set_exclude_sale_items( filter_var( $data['exclude_sale_items'], FILTER_VALIDATE_BOOLEAN ) );
+        }
+
+        if ( isset( $data['individual_use'] ) ) {
+            $coupon->set_individual_use( filter_var( $data['individual_use'], FILTER_VALIDATE_BOOLEAN ) );
+        }
+
+        if ( isset( $data['usage_limit'] ) ) {
+            $coupon->set_usage_limit( absint( $data['usage_limit'] ) );
+        }
+
+        if ( isset( $data['usage_limit_per_user'] ) ) {
+            $coupon->set_usage_limit_per_user( absint( $data['usage_limit_per_user'] ) );
+        }
+
+        if ( isset( $data['free_shipping'] ) ) {
+            $coupon->set_free_shipping( filter_var( $data['free_shipping'], FILTER_VALIDATE_BOOLEAN ) );
+        }
+
+        if ( isset( $data['email_restrictions'] ) ) {
+            $coupon->set_email_restrictions( array_map( 'sanitize_email', (array) $data['email_restrictions'] ) );
+        }
+
+        if ( isset( $data['product_ids'] ) ) {
+            $coupon->set_product_ids( array_filter( wp_parse_id_list( (array) $data['product_ids'] ) ) );
+        }
+
+        if ( isset( $data['excluded_product_ids'] ) ) {
+            $coupon->set_excluded_product_ids( array_filter( wp_parse_id_list( (array) $data['excluded_product_ids'] ) ) );
+        }
+
+        if ( isset( $data['product_categories'] ) ) {
+            $coupon->set_product_categories( array_filter( wp_parse_id_list( (array) $data['product_categories'] ) ) );
+        }
+
+        if ( isset( $data['excluded_product_categories'] ) ) {
+            $coupon->set_excluded_product_categories( array_filter( wp_parse_id_list( (array) $data['excluded_product_categories'] ) ) );
+        }
+
+        if ( isset( $data['expiry_date'] ) && '' !== trim( (string) $data['expiry_date'] ) ) {
+            $expiry_timestamp = strtotime( sanitize_text_field( $data['expiry_date'] ) );
+            if ( $expiry_timestamp > 0 ) {
+                $coupon->set_date_expires( $expiry_timestamp );
+            }
+        }
+
+        $coupon->save();
+        update_post_meta( $coupon_id, 'zencoupon_generated', 'yes' );
+
+        $updated_coupon = new WC_Coupon( $coupon_id );
+        $expiry_date    = $updated_coupon->get_date_expires() ? $updated_coupon->get_date_expires()->date_i18n( 'Y-m-d' ) : '';
+
+        return array(
+            'coupon_id'     => absint( $coupon_id ),
+            'code'          => $updated_coupon->get_code(),
+            'amount'        => wc_format_decimal( $updated_coupon->get_amount() ),
+            'discount_type' => $updated_coupon->get_discount_type(),
+            'expiry_date'   => $expiry_date,
+            'message'       => 'Coupon updated successfully.',
+        );
+    }
+
     public function list_coupons(): array {
         if ( ! class_exists( 'WC_Coupon' ) ) {
             return array( 'error' => 'WooCommerce is required to list coupons.' );
@@ -212,6 +322,20 @@ class ZenCoupon_AI_Assistant_Actions {
             'email_restrictions'         => $coupon->get_email_restrictions(),
             'date_created'               => $coupon_post->post_date,
         );
+    }
+
+    private function resolve_coupon_id( array $data ): int {
+        $coupon_id = isset( $data['coupon_id'] ) ? absint( $data['coupon_id'] ) : 0;
+
+        if ( $coupon_id <= 0 && isset( $data['id'] ) ) {
+            $coupon_id = absint( $data['id'] );
+        }
+
+        if ( $coupon_id <= 0 && isset( $data['code'] ) && '' !== trim( (string) $data['code'] ) && function_exists( 'wc_get_coupon_id_by_code' ) ) {
+            $coupon_id = absint( wc_get_coupon_id_by_code( sanitize_text_field( $data['code'] ) ) );
+        }
+
+        return $coupon_id;
     }
 
     public function delete_coupon( $coupon_id ): array {

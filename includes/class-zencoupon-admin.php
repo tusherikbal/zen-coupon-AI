@@ -6,6 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class ZenCoupon_AI_Assistant_Admin {
     private string $page_hook = '';
+    private string $help_page_hook = '';
 
     // FIX: Single source of truth for required capability.
     // manage_options ensures administrators always see the menu.
@@ -21,6 +22,8 @@ class ZenCoupon_AI_Assistant_Admin {
         add_action( 'wp_ajax_zencoupon_ai_assistant_delete_coupon', array( $this, 'ajax_delete_coupon' ) );
         add_action( 'wp_ajax_zencoupon_ai_assistant_refresh_generated_coupons', array( $this, 'ajax_refresh_generated_coupons' ) );
         add_action( 'wp_ajax_zencoupon_ai_assistant_refresh_dashboard_stats', array( $this, 'ajax_refresh_dashboard_stats' ) );
+        add_action( 'wp_ajax_zencoupon_ai_assistant_test_connection', array( $this, 'ajax_test_connection' ) );
+        add_action( 'wp_ajax_zencoupon_ai_assistant_send_support', array( $this, 'ajax_send_support' ) );
     }
 
     public function register_menu(): void {
@@ -34,6 +37,15 @@ class ZenCoupon_AI_Assistant_Admin {
             array( $this, 'render_admin_page' ),
             'dashicons-smartphone',
             58
+        );
+
+        $this->help_page_hook = add_submenu_page(
+            ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG,
+            __( 'Docs & Support', 'zencoupon-ai-assistant' ),
+            __( 'Docs & Support', 'zencoupon-ai-assistant' ),
+            self::REQUIRED_CAP,
+            ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-help',
+            array( $this, 'render_help_page' )
         );
     }
 
@@ -54,56 +66,10 @@ class ZenCoupon_AI_Assistant_Admin {
             )
         );
 
-        add_settings_section(
-            'zencoupon_ai_assistant_api',
-            __( 'Groq API Settings', 'zencoupon-ai-assistant' ),
-            array( $this, 'render_api_section' ),
-            'zencoupon_ai_assistant_settings'
-        );
-
-        add_settings_field(
-            'ai_provider',
-            __( 'AI Provider', 'zencoupon-ai-assistant' ),
-            array( $this, 'render_ai_provider_field' ),
-            'zencoupon_ai_assistant_settings',
-            'zencoupon_ai_assistant_api'
-        );
-
-        add_settings_field(
-            'groq_api_key',
-            __( 'Groq API Key', 'zencoupon-ai-assistant' ),
-            array( $this, 'render_groq_api_key_field' ),
-            'zencoupon_ai_assistant_settings',
-            'zencoupon_ai_assistant_api'
-        );
-
-        add_settings_field(
-            'groq_model_name',
-            __( 'Groq Model Name', 'zencoupon-ai-assistant' ),
-            array( $this, 'render_groq_model_name_field' ),
-            'zencoupon_ai_assistant_settings',
-            'zencoupon_ai_assistant_api'
-        );
-
-        add_settings_field(
-            'gemini_api_key',
-            __( 'Gemini API Key', 'zencoupon-ai-assistant' ),
-            array( $this, 'render_gemini_api_key_field' ),
-            'zencoupon_ai_assistant_settings',
-            'zencoupon_ai_assistant_api'
-        );
-
-        add_settings_field(
-            'gemini_model_name',
-            __( 'Gemini Model Name', 'zencoupon-ai-assistant' ),
-            array( $this, 'render_gemini_model_name_field' ),
-            'zencoupon_ai_assistant_settings',
-            'zencoupon_ai_assistant_api'
-        );
     }
 
     public function enqueue_assets( string $hook ): void {
-        if ( $hook !== $this->page_hook ) {
+        if ( $hook !== $this->page_hook && $hook !== $this->help_page_hook ) {
             return;
         }
 
@@ -123,81 +89,12 @@ class ZenCoupon_AI_Assistant_Admin {
         );
 
         wp_localize_script( 'zencoupon-admin-script', 'ZenCouponAIAssistantData', array(
-            'ajax_url' => admin_url( 'admin-ajax.php' ),
-            'nonce'    => wp_create_nonce( 'zencoupon_admin' ),
+            'ajax_url'         => admin_url( 'admin-ajax.php' ),
+            'nonce'            => wp_create_nonce( 'zencoupon_admin' ),
+            'provider_models'  => ZenCoupon_AI_Assistant_Bridge::get_provider_models(),
+            'provider_labels'  => ZenCoupon_AI_Assistant_Bridge::get_provider_labels(),
+            'help_url'         => admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-help' ),
         ) );
-    }
-
-    public function render_api_section(): void {
-        echo '<p>' . esc_html__( 'Configure your AI provider settings for natural language coupon generation.', 'zencoupon-ai-assistant' ) . '</p>';
-    }
-
-    public function render_ai_provider_field(): void {
-        $settings = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
-        $provider = isset( $settings['ai_provider'] ) ? sanitize_text_field( $settings['ai_provider'] ) : 'groq';
-
-        printf(
-            '<select id="ai_provider" name="%s[ai_provider]" class="regular-text">
-                <option value="groq" %s>%s</option>
-                <option value="gemini" %s>%s</option>
-            </select>',
-            esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ),
-            selected( $provider, 'groq', false ),
-            esc_html__( 'Groq', 'zencoupon-ai-assistant' ),
-            selected( $provider, 'gemini', false ),
-            esc_html__( 'Gemini', 'zencoupon-ai-assistant' )
-        );
-        echo '<p class="description">' . esc_html__( 'Choose your preferred AI provider for coupon generation.', 'zencoupon-ai-assistant' ) . '</p>';
-    }
-
-    public function render_groq_api_key_field(): void {
-        $settings = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
-        $api_key = isset( $settings['groq_api_key'] ) ? sanitize_text_field( $settings['groq_api_key'] ) : '';
-        $display_value = $api_key ? '********' : '';
-
-        printf(
-            '<input type="password" id="groq_api_key" name="%s[groq_api_key]" value="%s" class="regular-text" autocomplete="new-password" placeholder="%s" />',
-            esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ),
-            esc_attr( $display_value ),
-            esc_attr__( 'Enter Groq API key', 'zencoupon-ai-assistant' )
-        );
-    }
-
-    public function render_groq_model_name_field(): void {
-        $settings = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
-        $model_name = isset( $settings['groq_model_name'] ) ? sanitize_text_field( $settings['groq_model_name'] ) : 'openai/gpt-oss-20b';
-
-        printf(
-            '<input type="text" id="groq_model_name" name="%s[groq_model_name]" value="%s" class="regular-text" />',
-            esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ),
-            esc_attr( $model_name )
-        );
-        echo '<p class="description">' . esc_html__( 'Use a Groq OpenAI-compatible model name, for example openai/gpt-oss-20b.', 'zencoupon-ai-assistant' ) . '</p>';
-    }
-
-    public function render_gemini_api_key_field(): void {
-        $settings = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
-        $api_key = isset( $settings['gemini_api_key'] ) ? sanitize_text_field( $settings['gemini_api_key'] ) : '';
-        $display_value = $api_key ? '********' : '';
-
-        printf(
-            '<input type="password" id="gemini_api_key" name="%s[gemini_api_key]" value="%s" class="regular-text" autocomplete="new-password" placeholder="%s" />',
-            esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ),
-            esc_attr( $display_value ),
-            esc_attr__( 'Enter Gemini API key', 'zencoupon-ai-assistant' )
-        );
-    }
-
-    public function render_gemini_model_name_field(): void {
-        $settings = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
-        $model_name = isset( $settings['gemini_model_name'] ) ? sanitize_text_field( $settings['gemini_model_name'] ) : 'gemini-1.5-flash';
-
-        printf(
-            '<input type="text" id="gemini_model_name" name="%s[gemini_model_name]" value="%s" class="regular-text" />',
-            esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ),
-            esc_attr( $model_name )
-        );
-        echo '<p class="description">' . esc_html__( 'Use a Gemini model name, for example gemini-1.5-flash.', 'zencoupon-ai-assistant' ) . '</p>';
     }
 
     public function render_admin_page(): void {
@@ -206,9 +103,14 @@ class ZenCoupon_AI_Assistant_Admin {
             wp_die( esc_html__( 'Unauthorized', 'zencoupon-ai-assistant' ) );
         }
 
-        $settings   = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
-        $api_key    = isset( $settings['groq_api_key'] ) ? sanitize_text_field( $settings['groq_api_key'] ) : '';
-        $model_name = isset( $settings['groq_model_name'] ) ? sanitize_text_field( $settings['groq_model_name'] ) : 'openai/gpt-oss-20b';
+        $settings        = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
+        $settings        = is_array( $settings ) ? $settings : array();
+        $provider_labels = ZenCoupon_AI_Assistant_Bridge::get_provider_labels();
+        $provider_models = ZenCoupon_AI_Assistant_Bridge::get_provider_models();
+        $ai_provider     = isset( $settings['ai_provider'] ) && isset( $provider_labels[ $settings['ai_provider'] ] )
+            ? sanitize_text_field( $settings['ai_provider'] )
+            : 'groq';
+        $active_api_key  = isset( $settings[ $ai_provider . '_api_key' ] ) ? sanitize_text_field( $settings[ $ai_provider . '_api_key' ] ) : '';
 
         $product_categories = get_terms( array(
             'taxonomy'   => 'product_cat',
@@ -244,7 +146,7 @@ class ZenCoupon_AI_Assistant_Admin {
             $recent_activity[] = array(
                 'label'       => __( 'Settings updated', 'zencoupon-ai-assistant' ),
                 'code'        => 'settings',
-                'description' => __( 'Groq settings were saved successfully.', 'zencoupon-ai-assistant' ),
+                'description' => __( 'AI provider settings were saved successfully.', 'zencoupon-ai-assistant' ),
             );
         }
 
@@ -312,7 +214,7 @@ class ZenCoupon_AI_Assistant_Admin {
                     </div>
                 </div>
 
-                <div class="row g-4 mb-4">
+                <div class="row g-4 mb-4 zencoupon-main-grid">
                     <div class="col-lg-7">
                         <div class="card shadow-sm">
                             <div class="card-body">
@@ -417,7 +319,9 @@ class ZenCoupon_AI_Assistant_Admin {
 
                                             <div class="col-12 d-flex gap-2 flex-wrap align-items-center">
                                                 <button type="button" id="zencoupon-run-button" class="btn btn-primary zencoupon-btn"><?php esc_html_e( 'Send Command', 'zencoupon-ai-assistant' ); ?></button>
+                                                <button type="button" id="zencoupon-polish-button" class="btn btn-outline-primary zencoupon-btn-secondary"><?php esc_html_e( 'Polish Prompt', 'zencoupon-ai-assistant' ); ?></button>
                                                 <button type="button" id="zencoupon-reset-button" class="btn btn-outline-secondary zencoupon-btn-secondary"><?php esc_html_e( 'Reset', 'zencoupon-ai-assistant' ); ?></button>
+                                                <a class="btn btn-outline-secondary zencoupon-btn-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-help' ) ); ?>"><?php esc_html_e( 'Docs', 'zencoupon-ai-assistant' ); ?></a>
                                                 <div id="zencoupon-success-message" class="ms-auto text-success small fw-semibold" style="display:none;"></div>
                                             </div>
 
@@ -452,60 +356,72 @@ class ZenCoupon_AI_Assistant_Admin {
                     <div class="col-lg-5">
                         <div class="card shadow-sm mb-4">
                             <div class="card-body">
-                                <p class="text-muted text-uppercase small fw-semibold mb-3"><?php esc_html_e( 'AI Provider Settings', 'zencoupon-ai-assistant' ); ?></p>
+                                <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+                                    <p class="text-muted text-uppercase small fw-semibold mb-0"><?php esc_html_e( 'AI Provider Settings', 'zencoupon-ai-assistant' ); ?></p>
+                                    <a class="btn btn-outline-secondary btn-sm" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-help' ) ); ?>"><?php esc_html_e( 'Docs & Support', 'zencoupon-ai-assistant' ); ?></a>
+                                </div>
                                 <form method="post" action="options.php">
                                     <?php settings_fields( 'zencoupon_ai_assistant_settings' ); ?>
                                     <div class="mb-3">
-                                        <label class="form-label small text-muted" for="ai_provider"><?php esc_html_e( 'AI Provider', 'zencoupon-ai-assistant' ); ?></label>
-                                        <select id="ai_provider" name="<?php echo esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ); ?>[ai_provider]" class="form-select">
-                                            <option value="groq" <?php selected( $settings['ai_provider'] ?? 'groq', 'groq' ); ?>><?php esc_html_e( 'Groq', 'zencoupon-ai-assistant' ); ?></option>
-                                            <option value="gemini" <?php selected( $settings['ai_provider'] ?? 'groq', 'gemini' ); ?>><?php esc_html_e( 'Gemini', 'zencoupon-ai-assistant' ); ?></option>
+                                        <label class="form-label small text-muted" for="zencoupon-ai-provider"><?php esc_html_e( 'AI Provider', 'zencoupon-ai-assistant' ); ?></label>
+                                        <select id="zencoupon-ai-provider" name="<?php echo esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ); ?>[ai_provider]" class="form-select">
+                                            <?php foreach ( $provider_labels as $provider_key => $provider_label ) : ?>
+                                                <option value="<?php echo esc_attr( $provider_key ); ?>" <?php selected( $ai_provider, $provider_key ); ?>><?php echo esc_html( $provider_label ); ?></option>
+                                            <?php endforeach; ?>
                                         </select>
-                                        <div class="form-text"><?php esc_html_e( 'Choose your preferred AI provider for coupon generation.', 'zencoupon-ai-assistant' ); ?></div>
                                     </div>
 
-                                    <div id="groq-settings" class="provider-settings" style="display: <?php echo ( ($settings['ai_provider'] ?? 'groq') === 'groq' ) ? 'block' : 'none'; ?>;">
-                                        <div class="mb-3">
-                                            <label class="form-label small text-muted" for="groq_api_key"><?php esc_html_e( 'Groq API Key', 'zencoupon-ai-assistant' ); ?></label>
-                                            <div class="input-group">
-                                                <input type="password" id="groq_api_key" name="<?php echo esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ); ?>[groq_api_key]" value="<?php echo esc_attr( $api_key ); ?>" class="form-control" autocomplete="off" />
-                                                <button type="button" class="btn btn-outline-secondary" id="zencoupon-toggle-api-key"><?php esc_html_e( 'Show', 'zencoupon-ai-assistant' ); ?></button>
+                                    <?php foreach ( $provider_labels as $provider_key => $provider_label ) : ?>
+                                        <?php
+                                        $api_key_name  = $provider_key . '_api_key';
+                                        $model_name_id = $provider_key . '_model_name';
+                                        $api_value     = isset( $settings[ $api_key_name ] ) ? sanitize_text_field( $settings[ $api_key_name ] ) : '';
+                                        $model_value   = isset( $settings[ $model_name_id ] ) ? sanitize_text_field( $settings[ $model_name_id ] ) : ZenCoupon_AI_Assistant_Bridge::get_default_model_for_provider( $provider_key );
+                                        if ( 'groq' === $provider_key && 'llama3-8b-8192' === $model_value ) {
+                                            $model_value = 'llama-3.1-8b-instant';
+                                        }
+                                        $is_known_model = isset( $provider_models[ $provider_key ][ $model_value ] );
+                                        ?>
+                                        <div class="zencoupon-provider-settings" data-provider="<?php echo esc_attr( $provider_key ); ?>" style="display: <?php echo $ai_provider === $provider_key ? 'block' : 'none'; ?>;">
+                                            <div class="mb-3">
+                                                <label class="form-label small text-muted" for="<?php echo esc_attr( $api_key_name ); ?>"><?php echo esc_html( $provider_label ); ?> <?php esc_html_e( 'API Key', 'zencoupon-ai-assistant' ); ?></label>
+                                                <div class="input-group">
+                                                    <input type="password" id="<?php echo esc_attr( $api_key_name ); ?>" name="<?php echo esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ); ?>[<?php echo esc_attr( $api_key_name ); ?>]" value="<?php echo esc_attr( $api_value ); ?>" class="form-control zencoupon-api-key-field" autocomplete="off" />
+                                                    <button type="button" class="btn btn-outline-secondary zencoupon-toggle-api-key" data-field="<?php echo esc_attr( $api_key_name ); ?>"><?php esc_html_e( 'Show', 'zencoupon-ai-assistant' ); ?></button>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label class="form-label small text-muted" for="<?php echo esc_attr( $model_name_id ); ?>_select"><?php echo esc_html( $provider_label ); ?> <?php esc_html_e( 'Model', 'zencoupon-ai-assistant' ); ?></label>
+                                                <select id="<?php echo esc_attr( $model_name_id ); ?>_select" class="form-select zencoupon-model-select" data-input="<?php echo esc_attr( $model_name_id ); ?>">
+                                                    <?php foreach ( $provider_models[ $provider_key ] as $model_id => $model_label ) : ?>
+                                                        <option value="<?php echo esc_attr( $model_id ); ?>" <?php selected( $model_value, $model_id ); ?>><?php echo esc_html( $model_label ); ?></option>
+                                                    <?php endforeach; ?>
+                                                    <option value="__custom__" <?php selected( ! $is_known_model ); ?>><?php esc_html_e( 'Custom model', 'zencoupon-ai-assistant' ); ?></option>
+                                                </select>
+                                                <input type="text" id="<?php echo esc_attr( $model_name_id ); ?>" name="<?php echo esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ); ?>[<?php echo esc_attr( $model_name_id ); ?>]" value="<?php echo esc_attr( $model_value ); ?>" class="form-control mt-2 zencoupon-model-input" data-provider="<?php echo esc_attr( $provider_key ); ?>" style="display: <?php echo $is_known_model ? 'none' : 'block'; ?>;" />
                                             </div>
                                         </div>
-                                        <div class="mb-3">
-                                            <label class="form-label small text-muted" for="groq_model_name"><?php esc_html_e( 'Groq Model Name', 'zencoupon-ai-assistant' ); ?></label>
-                                            <input type="text" id="groq_model_name" name="<?php echo esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ); ?>[groq_model_name]" value="<?php echo esc_attr( $model_name ); ?>" class="form-control" />
-                                            <div class="form-text"><?php esc_html_e( 'Use a Groq OpenAI-compatible model name, for example llama3-8b-8192.', 'zencoupon-ai-assistant' ); ?></div>
-                                        </div>
-                                    </div>
+                                    <?php endforeach; ?>
 
-                                    <div id="gemini-settings" class="provider-settings" style="display: <?php echo ( ($settings['ai_provider'] ?? 'groq') === 'gemini' ) ? 'block' : 'none'; ?>;">
-                                        <div class="mb-3">
-                                            <label class="form-label small text-muted" for="gemini_api_key"><?php esc_html_e( 'Gemini API Key', 'zencoupon-ai-assistant' ); ?></label>
-                                            <div class="input-group">
-                                                <input type="password" id="gemini_api_key" name="<?php echo esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ); ?>[gemini_api_key]" value="<?php echo esc_attr( $settings['gemini_api_key'] ?? '' ); ?>" class="form-control" autocomplete="off" />
-                                                <button type="button" class="btn btn-outline-secondary" id="zencoupon-toggle-gemini-api-key"><?php esc_html_e( 'Show', 'zencoupon-ai-assistant' ); ?></button>
-                                            </div>
-                                            <div class="form-text"><?php esc_html_e( 'Get your API key from Google AI Studio (https://makersuite.google.com/app/apikey).', 'zencoupon-ai-assistant' ); ?></div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label small text-muted" for="gemini_model_name"><?php esc_html_e( 'Gemini Model Name', 'zencoupon-ai-assistant' ); ?></label>
-                                            <input type="text" id="gemini_model_name" name="<?php echo esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ); ?>[gemini_model_name]" value="<?php echo esc_attr( $settings['gemini_model_name'] ?? 'gemini-pro' ); ?>" class="form-control" />
-                                            <div class="form-text"><?php esc_html_e( 'Use a Gemini model name, for example gemini-pro.', 'zencoupon-ai-assistant' ); ?></div>
-                                        </div>
+                                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                                        <button type="submit" class="btn btn-primary"><?php esc_html_e( 'Save Settings', 'zencoupon-ai-assistant' ); ?></button>
+                                        <button type="button" class="btn btn-outline-secondary" id="zencoupon-test-connection"><?php esc_html_e( 'Test Connection', 'zencoupon-ai-assistant' ); ?></button>
+                                        <span id="zencoupon-test-connection-result" class="small text-muted"></span>
                                     </div>
-
-                                    <button type="submit" class="btn btn-primary"><?php esc_html_e( 'Save Settings', 'zencoupon-ai-assistant' ); ?></button>
                                 </form>
 
                                 <?php
-                                $current_provider = $settings['ai_provider'] ?? 'groq';
-                                $current_api_key = ( $current_provider === 'groq' ) ? $api_key : ( $settings['gemini_api_key'] ?? '' );
-                                if ( empty( $current_api_key ) ) :
+                                if ( empty( $active_api_key ) ) :
                                 ?>
                                     <div class="alert alert-info mt-3" role="alert">
-                                        <?php // translators: %s is the selected AI provider name. ?>
-                                        <?php printf( esc_html__( 'No API key saved for %s. The API key is required before commands can be processed.', 'zencoupon-ai-assistant' ), esc_html( ucfirst( $current_provider ) ) ); ?>
+                                        <?php
+                                        printf(
+                                            /* translators: %s is the selected provider label. */
+                                            esc_html__( 'No API key saved for %s. The API key is required before commands can be processed.', 'zencoupon-ai-assistant' ),
+                                            esc_html( $provider_labels[ $ai_provider ] )
+                                        );
+                                        ?>
                                     </div>
                                 <?php endif; ?>
                             </div>
@@ -524,6 +440,177 @@ class ZenCoupon_AI_Assistant_Admin {
             </div>
         </div>
         <?php
+    }
+
+    public function render_help_page(): void {
+        if ( ! $this->current_user_can_manage_coupons() ) {
+            wp_die( esc_html__( 'Unauthorized', 'zencoupon-ai-assistant' ) );
+        }
+
+        $current_user = wp_get_current_user();
+        $reply_email  = $current_user instanceof WP_User ? $current_user->user_email : get_option( 'admin_email' );
+        ?>
+        <div class="wrap">
+            <div class="container-fluid px-0">
+                <div class="d-flex flex-column flex-md-row align-items-start justify-content-between mb-4">
+                    <div>
+                        <h1 class="h3 mb-1"><?php esc_html_e( 'ZenCoupon Docs & Support', 'zencoupon-ai-assistant' ); ?></h1>
+                        <p class="text-muted mb-0"><?php esc_html_e( 'Provider setup, prompt examples, troubleshooting, and direct support.', 'zencoupon-ai-assistant' ); ?></p>
+                    </div>
+                    <a class="btn btn-outline-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG ) ); ?>"><?php esc_html_e( 'Back to Console', 'zencoupon-ai-assistant' ); ?></a>
+                </div>
+
+                <div class="row g-4 zencoupon-main-grid">
+                    <div class="col-lg-7">
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-body">
+                                <p class="text-muted text-uppercase small fw-semibold mb-3"><?php esc_html_e( 'Quick Guide', 'zencoupon-ai-assistant' ); ?></p>
+                                <h2 class="h5"><?php esc_html_e( 'Provider setup', 'zencoupon-ai-assistant' ); ?></h2>
+                                <p><?php esc_html_e( 'Choose Groq, OpenAI/GPT, or Gemini from the provider settings, save the API key, choose a model, and run a test connection before generating live coupons.', 'zencoupon-ai-assistant' ); ?></p>
+
+                                <h2 class="h5"><?php esc_html_e( 'Model guide', 'zencoupon-ai-assistant' ); ?></h2>
+                                <ul>
+                                    <li><?php esc_html_e( 'Groq is fast and useful for low-latency coupon commands.', 'zencoupon-ai-assistant' ); ?></li>
+                                    <li><?php esc_html_e( 'OpenAI/GPT default is gpt-5.5; gpt-5.4-mini and gpt-5.4-nano are lower-cost options.', 'zencoupon-ai-assistant' ); ?></li>
+                                    <li><?php esc_html_e( 'Gemini Flash models are useful for quick structured JSON output.', 'zencoupon-ai-assistant' ); ?></li>
+                                </ul>
+
+                                <h2 class="h5"><?php esc_html_e( 'Prompt examples', 'zencoupon-ai-assistant' ); ?></h2>
+                                <ul>
+                                    <li><code>create coupon 15% discount</code></li>
+                                    <li><code>create coupon blackfriday 30% discount</code></li>
+                                    <li><code>Create a SAVE20 coupon with 20% off, free shipping, expires next month</code></li>
+                                </ul>
+
+                                <h2 class="h5"><?php esc_html_e( 'Troubleshooting', 'zencoupon-ai-assistant' ); ?></h2>
+                                <ul>
+                                    <li><?php esc_html_e( 'If you see a missing API key error, save the selected provider key again.', 'zencoupon-ai-assistant' ); ?></li>
+                                    <li><?php esc_html_e( 'If a model error appears, choose a listed model or enter a valid custom model ID.', 'zencoupon-ai-assistant' ); ?></li>
+                                    <li><?php esc_html_e( 'If the AI returns invalid JSON, try the Polish Prompt button and run the command again.', 'zencoupon-ai-assistant' ); ?></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-5">
+                        <div class="card shadow-sm">
+                            <div class="card-body">
+                                <p class="text-muted text-uppercase small fw-semibold mb-3"><?php esc_html_e( 'Support', 'zencoupon-ai-assistant' ); ?></p>
+                                <form id="zencoupon-support-form">
+                                    <?php wp_nonce_field( 'zencoupon_admin', 'zencoupon_support_nonce', true, false ); ?>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted" for="zencoupon-support-email"><?php esc_html_e( 'Reply email', 'zencoupon-ai-assistant' ); ?></label>
+                                        <input type="email" id="zencoupon-support-email" name="reply_email" class="form-control" value="<?php echo esc_attr( $reply_email ); ?>" required />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted" for="zencoupon-support-cc"><?php esc_html_e( 'CC email', 'zencoupon-ai-assistant' ); ?></label>
+                                        <input type="email" id="zencoupon-support-cc" name="cc_email" class="form-control" />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted" for="zencoupon-support-subject"><?php esc_html_e( 'Subject', 'zencoupon-ai-assistant' ); ?></label>
+                                        <input type="text" id="zencoupon-support-subject" name="subject" class="form-control" required />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted" for="zencoupon-support-message"><?php esc_html_e( 'Message', 'zencoupon-ai-assistant' ); ?></label>
+                                        <textarea id="zencoupon-support-message" name="message" class="form-control" rows="7" required></textarea>
+                                    </div>
+                                    <p class="small text-muted mb-3">
+                                        <?php esc_html_e( 'If the form does not send, email support directly at', 'zencoupon-ai-assistant' ); ?>
+                                        <a href="mailto:tusherikbal20@gmail.com">tusherikbal20@gmail.com</a>.
+                                    </p>
+                                    <button type="submit" class="btn btn-primary"><?php esc_html_e( 'Send Support Request', 'zencoupon-ai-assistant' ); ?></button>
+                                    <div id="zencoupon-support-result" class="small text-muted mt-3"></div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+    public function ajax_test_connection(): void {
+        check_ajax_referer( 'zencoupon_admin', 'nonce' );
+
+        if ( ! $this->current_user_can_manage_coupons() ) {
+            wp_send_json_error( array( 'message' => __( 'Permission denied.', 'zencoupon-ai-assistant' ) ), 403 );
+        }
+
+        $submitted_settings = isset( $_POST[ ZenCoupon_AI_Assistant_Main::OPTION_KEY ] ) && is_array( $_POST[ ZenCoupon_AI_Assistant_Main::OPTION_KEY ] )
+            ? wp_unslash( $_POST[ ZenCoupon_AI_Assistant_Main::OPTION_KEY ] )
+            : array();
+        $settings = $this->sanitize_settings( (array) $submitted_settings );
+
+        $bridge = new ZenCoupon_AI_Assistant_Bridge();
+        $result = $bridge->test_connection( $settings );
+
+        if ( is_wp_error( $result ) ) {
+            wp_send_json_error( array( 'message' => $result->get_error_message() ), 500 );
+        }
+
+        wp_send_json_success( array( 'message' => __( 'Connection successful. The selected provider returned valid tool JSON.', 'zencoupon-ai-assistant' ) ) );
+    }
+
+    public function ajax_send_support(): void {
+        check_ajax_referer( 'zencoupon_admin', 'nonce' );
+
+        if ( ! $this->current_user_can_manage_coupons() ) {
+            wp_send_json_error( array( 'message' => __( 'Permission denied.', 'zencoupon-ai-assistant' ) ), 403 );
+        }
+
+        $reply_email = isset( $_POST['reply_email'] ) ? sanitize_email( wp_unslash( $_POST['reply_email'] ) ) : '';
+        $cc_email    = isset( $_POST['cc_email'] ) ? sanitize_email( wp_unslash( $_POST['cc_email'] ) ) : '';
+        $subject     = isset( $_POST['subject'] ) ? sanitize_text_field( wp_unslash( $_POST['subject'] ) ) : '';
+        $message     = isset( $_POST['message'] ) ? sanitize_textarea_field( wp_unslash( $_POST['message'] ) ) : '';
+
+        if ( empty( $reply_email ) || ! is_email( $reply_email ) ) {
+            wp_send_json_error( array( 'message' => __( 'Please enter a valid reply email.', 'zencoupon-ai-assistant' ) ), 400 );
+        }
+
+        if ( ! empty( $cc_email ) && ! is_email( $cc_email ) ) {
+            wp_send_json_error( array( 'message' => __( 'Please enter a valid CC email.', 'zencoupon-ai-assistant' ) ), 400 );
+        }
+
+        if ( empty( $subject ) || empty( $message ) ) {
+            wp_send_json_error( array( 'message' => __( 'Subject and message are required.', 'zencoupon-ai-assistant' ) ), 400 );
+        }
+
+        $site_name   = wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES );
+        $admin_email = sanitize_email( get_option( 'admin_email' ) );
+        if ( empty( $admin_email ) || ! is_email( $admin_email ) ) {
+            $admin_email = $reply_email;
+        }
+        $headers = array(
+            'Content-Type: text/plain; charset=UTF-8',
+            'From: ' . $site_name . ' <' . $admin_email . '>',
+            'Reply-To: ' . $reply_email,
+        );
+
+        if ( ! empty( $cc_email ) ) {
+            $headers[] = 'Cc: ' . $cc_email;
+        }
+
+        $body = sprintf(
+            "Site: %s\nAdmin URL: %s\nReply Email: %s\n\n%s",
+            home_url(),
+            admin_url(),
+            $reply_email,
+            $message
+        );
+
+        $sent = wp_mail(
+            'tusherikbal20@gmail.com',
+            '[ZenCoupon Support] ' . $subject,
+            $body,
+            $headers
+        );
+
+        if ( ! $sent ) {
+            wp_send_json_error( array( 'message' => __( 'Support email could not be sent. Please check WordPress mail configuration.', 'zencoupon-ai-assistant' ) ), 500 );
+        }
+
+        wp_send_json_success( array( 'message' => __( 'Support request sent successfully.', 'zencoupon-ai-assistant' ) ) );
     }
 
     public function ajax_refresh_generated_coupons(): void {
@@ -708,7 +795,15 @@ class ZenCoupon_AI_Assistant_Admin {
             error_log( 'ZenCoupon: Tool call received: ' . print_r( $tool_call, true ) );
         }
 
-        if ( isset( $tool_call['name'], $tool_call['arguments'] ) && 'create_coupon' === $tool_call['name'] ) {
+        if ( $this->is_update_command( $command ) ) {
+            $tool_call = $this->force_update_tool_call( $tool_call, $command );
+
+            if ( is_wp_error( $tool_call ) ) {
+                wp_send_json_error( array( 'message' => $tool_call->get_error_message() ), 400 );
+            }
+        }
+
+        if ( isset( $tool_call['name'], $tool_call['arguments'] ) && in_array( $tool_call['name'], array( 'create_coupon', 'update_coupon' ), true ) ) {
             $tool_call['arguments'] = array_merge( (array) $tool_call['arguments'], $restrictions );
         }
 
@@ -728,6 +823,70 @@ class ZenCoupon_AI_Assistant_Admin {
         }
 
         wp_send_json_success( array( 'tool_call' => $tool_call, 'result' => $result ) );
+    }
+
+    private function is_update_command( string $command ): bool {
+        return (bool) preg_match( '/\b(edit|update|change|modify|revise|adjust|existing|recent|latest|last)\b/i', $command );
+    }
+
+    private function force_update_tool_call( array $tool_call, string $command ) {
+        $arguments = isset( $tool_call['arguments'] ) && is_array( $tool_call['arguments'] ) ? $tool_call['arguments'] : array();
+        $target    = $this->extract_update_target_from_command( $command );
+
+        if ( empty( $target ) ) {
+            return new WP_Error(
+                'missing_update_target',
+                __( 'Please mention a coupon ID/code, or use "recent/latest coupon" after at least one generated coupon exists.', 'zencoupon-ai-assistant' )
+            );
+        }
+
+        unset( $arguments['code'] );
+        $arguments = array_merge( $arguments, $target );
+
+        return array(
+            'name'      => 'update_coupon',
+            'arguments' => $arguments,
+        );
+    }
+
+    private function extract_update_target_from_command( string $command ): array {
+        if ( preg_match( '/\b(?:coupon\s*)?(?:id|#)\s*:?\s*(\d+)\b/i', $command, $matches ) ) {
+            return array( 'coupon_id' => absint( $matches[1] ) );
+        }
+
+        if ( preg_match( '/\b(recent|latest|last)\b/i', $command ) ) {
+            return $this->get_latest_generated_coupon_target();
+        }
+
+        if ( preg_match( '/\b(?:code|coupon code)\s*:?\s*([A-Z0-9_-]{3,40})\b/i', $command, $matches ) ) {
+            return array( 'code' => sanitize_text_field( $matches[1] ) );
+        }
+
+        return array();
+    }
+
+    private function get_latest_generated_coupon_target(): array {
+        // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Required to target the latest AI-generated coupon.
+        $coupons = get_posts( array(
+            'post_type'      => 'shop_coupon',
+            'post_status'    => 'publish',
+            'posts_per_page' => 1,
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+            'fields'         => 'ids',
+            'meta_query'     => array(
+                array(
+                    'key'   => 'zencoupon_generated',
+                    'value' => 'yes',
+                ),
+            ),
+        ) );
+
+        if ( empty( $coupons[0] ) ) {
+            return array();
+        }
+
+        return array( 'coupon_id' => absint( $coupons[0] ) );
     }
 
     public function ajax_delete_coupon(): void {
@@ -754,41 +913,34 @@ class ZenCoupon_AI_Assistant_Admin {
     }
 
     public function sanitize_settings( array $input ): array {
-        $output       = array();
-        $current      = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
+        $output          = array();
+        $current         = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
+        $current         = is_array( $current ) ? $current : array();
+        $provider_labels = ZenCoupon_AI_Assistant_Bridge::get_provider_labels();
 
-        // AI Provider
-        $output['ai_provider'] = isset( $input['ai_provider'] ) && in_array( $input['ai_provider'], array( 'groq', 'gemini' ), true )
-            ? sanitize_text_field( $input['ai_provider'] )
-            : 'groq';
+        $submitted_provider = isset( $input['ai_provider'] ) ? sanitize_text_field( $input['ai_provider'] ) : 'groq';
+        $output['ai_provider'] = isset( $provider_labels[ $submitted_provider ] ) ? $submitted_provider : 'groq';
 
-        // Groq API Key
-        $existing_groq_key = isset( $current['groq_api_key'] ) ? sanitize_text_field( $current['groq_api_key'] ) : '';
-        $submitted_groq_key = isset( $input['groq_api_key'] ) ? sanitize_text_field( $input['groq_api_key'] ) : '';
+        foreach ( array_keys( $provider_labels ) as $provider ) {
+            $api_key_name = $provider . '_api_key';
+            $model_name   = $provider . '_model_name';
 
-        if ( '********' === $submitted_groq_key || '' === $submitted_groq_key ) {
-            $output['groq_api_key'] = $existing_groq_key;
-        } else {
-            $output['groq_api_key'] = $submitted_groq_key;
+            $existing_key  = isset( $current[ $api_key_name ] ) ? sanitize_text_field( $current[ $api_key_name ] ) : '';
+            $submitted_key = isset( $input[ $api_key_name ] ) ? sanitize_text_field( $input[ $api_key_name ] ) : '';
+
+            $output[ $api_key_name ] = ( '********' === $submitted_key || '' === $submitted_key )
+                ? $existing_key
+                : $submitted_key;
+
+            $submitted_model = isset( $input[ $model_name ] ) ? sanitize_text_field( $input[ $model_name ] ) : '';
+            if ( 'groq' === $provider && 'llama3-8b-8192' === $submitted_model ) {
+                $submitted_model = 'llama-3.1-8b-instant';
+            }
+
+            $output[ $model_name ] = '' !== trim( $submitted_model )
+                ? $submitted_model
+                : ZenCoupon_AI_Assistant_Bridge::get_default_model_for_provider( $provider );
         }
-
-        $output['groq_model_name'] = isset( $input['groq_model_name'] ) && '' !== trim( $input['groq_model_name'] )
-            ? sanitize_text_field( $input['groq_model_name'] )
-            : 'llama3-8b-8192';
-
-        // Gemini API Key
-        $existing_gemini_key = isset( $current['gemini_api_key'] ) ? sanitize_text_field( $current['gemini_api_key'] ) : '';
-        $submitted_gemini_key = isset( $input['gemini_api_key'] ) ? sanitize_text_field( $input['gemini_api_key'] ) : '';
-
-        if ( '********' === $submitted_gemini_key || '' === $submitted_gemini_key ) {
-            $output['gemini_api_key'] = $existing_gemini_key;
-        } else {
-            $output['gemini_api_key'] = $submitted_gemini_key;
-        }
-
-        $output['gemini_model_name'] = isset( $input['gemini_model_name'] ) && '' !== trim( $input['gemini_model_name'] )
-            ? sanitize_text_field( $input['gemini_model_name'] )
-            : 'gemini-1.5-flash';
 
         return $output;
     }

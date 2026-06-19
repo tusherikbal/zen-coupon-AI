@@ -6,59 +6,98 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class ZenCoupon_AI_Assistant_Bridge {
 
-    private const GROQ_API_ENDPOINT    = 'https://api.groq.com/openai/v1/chat/completions';
-    private const GEMINI_API_ENDPOINT  = 'https://generativelanguage.googleapis.com/v1beta/models/';
+    private const GROQ_API_ENDPOINT   = 'https://api.groq.com/openai/v1/chat/completions';
+    private const OPENAI_API_ENDPOINT = 'https://api.openai.com/v1/responses';
+    private const GEMINI_API_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
-    private const GROQ_DEFAULT_MODEL   = 'llama3-8b-8192';
+    private const DEFAULT_PROVIDER     = 'groq';
+    private const GROQ_DEFAULT_MODEL   = 'llama-3.1-8b-instant';
+    private const OPENAI_DEFAULT_MODEL = 'gpt-5.5';
     private const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash';
 
-    public function call_ai( string $input ) {
-
-        $provider = $this->get_ai_provider();
-
-        if ( 'gemini' === $provider ) {
-            return $this->call_gemini( $input );
-        }
-
-        return $this->call_groq( $input );
+    public static function get_provider_labels(): array {
+        return array(
+            'groq'   => __( 'Groq', 'zencoupon-ai-assistant' ),
+            'openai' => __( 'OpenAI / GPT', 'zencoupon-ai-assistant' ),
+            'gemini' => __( 'Google Gemini', 'zencoupon-ai-assistant' ),
+        );
     }
 
-    public function call_groq( string $input ) {
+    public static function get_provider_models(): array {
+        return array(
+            'groq'   => array(
+                'llama-3.1-8b-instant'  => 'llama-3.1-8b-instant',
+                'llama-3.3-70b-versatile'=> 'llama-3.3-70b-versatile',
+                'openai/gpt-oss-20b'     => 'openai/gpt-oss-20b',
+                'openai/gpt-oss-120b'    => 'openai/gpt-oss-120b',
+            ),
+            'openai' => array(
+                'gpt-5.5'      => 'gpt-5.5',
+                'gpt-5.4'      => 'gpt-5.4',
+                'gpt-5.4-mini' => 'gpt-5.4-mini',
+                'gpt-5.4-nano' => 'gpt-5.4-nano',
+            ),
+            'gemini' => array(
+                'gemini-3.5-flash'      => 'gemini-3.5-flash',
+                'gemini-2.5-flash'      => 'gemini-2.5-flash',
+                'gemini-2.5-flash-lite' => 'gemini-2.5-flash-lite',
+                'gemini-2.5-pro'        => 'gemini-2.5-pro',
+            ),
+        );
+    }
 
-        $api_key = trim( $this->get_groq_api_key() );
-        $model   = $this->get_groq_model_name();
-
-        if ( empty( $api_key ) ) {
-            return new WP_Error(
-                'missing_api_key',
-                __( 'Groq API key is not configured.', 'zencoupon-ai-assistant' )
-            );
+    public static function get_default_model_for_provider( string $provider ): string {
+        switch ( $provider ) {
+            case 'openai':
+                return self::OPENAI_DEFAULT_MODEL;
+            case 'gemini':
+                return self::GEMINI_DEFAULT_MODEL;
+            case 'groq':
+            default:
+                return self::GROQ_DEFAULT_MODEL;
         }
+    }
 
-        $body = array(
-            'model'       => $model,
-            'messages'    => array(
-                array(
-                    'role'    => 'user',
-                    'content' => $this->get_prompt_payload( $input ),
-                ),
-            ),
-            'temperature' => 0.0,
-            'max_tokens'  => 512,
-        );
+    public function call_ai( string $input ) {
+        $settings = $this->get_settings();
+        $provider = $this->get_ai_provider( $settings );
 
-        $args = array(
-            'headers' => array(
-                'Content-Type'  => 'application/json',
-                'Authorization' => 'Bearer ' . $api_key,
-            ),
-            'body'    => wp_json_encode( $body ),
-            'timeout' => 30,
-        );
+        switch ( $provider ) {
+            case 'openai':
+                return $this->call_openai( $input, $settings );
+            case 'gemini':
+                return $this->call_gemini( $input, $settings );
+            case 'groq':
+            default:
+                return $this->call_groq( $input, $settings );
+        }
+    }
+
+    public function test_connection( ?array $settings = null ) {
+        $settings = is_array( $settings ) ? $settings : $this->get_settings();
+        $provider = $this->get_ai_provider( $settings );
+
+        switch ( $provider ) {
+            case 'openai':
+                return $this->call_openai( 'Create a test 10% coupon named TEST10. Return only the tool JSON.', $settings );
+            case 'gemini':
+                return $this->call_gemini( 'Create a test 10% coupon named TEST10. Return only the tool JSON.', $settings );
+            case 'groq':
+            default:
+                return $this->call_groq( 'Create a test 10% coupon named TEST10. Return only the tool JSON.', $settings );
+        }
+    }
+
+    private function call_groq( string $input, array $settings ) {
+        $request = $this->build_groq_request( $input, $settings );
+
+        if ( is_wp_error( $request ) ) {
+            return $request;
+        }
 
         $response = $this->remote_post_with_retry(
             self::GROQ_API_ENDPOINT,
-            $args,
+            $request,
             'groq'
         );
 
@@ -66,86 +105,39 @@ class ZenCoupon_AI_Assistant_Bridge {
             return $response;
         }
 
-        $status_code   = wp_remote_retrieve_response_code( $response );
-        $response_body = wp_remote_retrieve_body( $response );
-        $data          = json_decode( $response_body, true );
-
-        if (
-            200 !== $status_code ||
-            ! isset( $data['choices'][0]['message']['content'] )
-        ) {
-
-            if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-                error_log(
-                    'Groq Error Response: ' . $response_body
-                );
-            }
-
-            return new WP_Error(
-                'groq_error',
-                sprintf(
-                    /* translators: %s: API service name */
-                    __( '%s API returned an unexpected response.', 'zencoupon-ai-assistant' ),
-                    'Groq'
-                )
-            );
-        }
-
-        $ai_output = $data['choices'][0]['message']['content'];
-
-        return $this->parse_tool_call(
-            $this->clean_ai_response( $ai_output )
-        );
+        return $this->parse_groq_response( $response );
     }
 
-    public function call_gemini( string $input ) {
+    private function call_openai( string $input, array $settings ) {
+        $request = $this->build_openai_request( $input, $settings );
 
-        $api_key = trim( $this->get_gemini_api_key() );
-        $model   = $this->get_gemini_model_name();
-
-        if ( empty( $api_key ) ) {
-            return new WP_Error(
-                'missing_api_key',
-                __( 'Gemini API key is not configured.', 'zencoupon-ai-assistant' )
-            );
+        if ( is_wp_error( $request ) ) {
+            return $request;
         }
 
-        // Properly format the model name and construct the URL
-        $model_path = str_replace( '/', '-', $model );
-
-        $url = self::GEMINI_API_ENDPOINT .
-            $model_path .
-            ':generateContent?key=' .
-            rawurlencode( $api_key );
-
-        $body = array(
-            'contents' => array(
-                array(
-                    'parts' => array(
-                        array(
-                            'text' => $this->get_prompt_payload( $input ),
-                        ),
-                    ),
-                ),
-            ),
-            'generationConfig' => array(
-                'temperature'     => 0.1,
-                'maxOutputTokens' => 1024,
-            ),
+        $response = $this->remote_post_with_retry(
+            self::OPENAI_API_ENDPOINT,
+            $request,
+            'openai'
         );
 
-        $args = array(
-            'method'  => 'POST',
-            'headers' => array(
-                'Content-Type' => 'application/json',
-            ),
-            'body'    => wp_json_encode( $body ),
-            'timeout' => 30,
-        );
+        if ( is_wp_error( $response ) ) {
+            return $response;
+        }
+
+        return $this->parse_openai_response( $response );
+    }
+
+    private function call_gemini( string $input, array $settings ) {
+        $request = $this->build_gemini_request( $input, $settings );
+
+        if ( is_wp_error( $request ) ) {
+            return $request;
+        }
 
         $response = $this->remote_post_with_retry(
-            $url,
-            $args,
+            $request['url'],
+            $request['args'],
             'gemini'
         );
 
@@ -153,138 +145,230 @@ class ZenCoupon_AI_Assistant_Bridge {
             return $response;
         }
 
+        return $this->parse_gemini_response( $response );
+    }
+
+    private function build_groq_request( string $input, array $settings ) {
+        $api_key = trim( $settings['groq_api_key'] ?? '' );
+        $model   = $this->get_provider_model( 'groq', $settings );
+
+        if ( empty( $api_key ) ) {
+            return new WP_Error( 'missing_api_key', __( 'Groq API key is not configured.', 'zencoupon-ai-assistant' ) );
+        }
+
+        return array(
+            'headers' => array(
+                'Content-Type'  => 'application/json',
+                'Authorization' => 'Bearer ' . $api_key,
+            ),
+            'body'    => wp_json_encode( array(
+                'model'       => $model,
+                'messages'    => array(
+                    array(
+                        'role'    => 'system',
+                        'content' => $this->get_system_prompt(),
+                    ),
+                    array(
+                        'role'    => 'user',
+                        'content' => $input,
+                    ),
+                ),
+                'temperature' => 0.0,
+                'max_tokens'  => 512,
+            ) ),
+            'timeout' => 30,
+        );
+    }
+
+    private function build_openai_request( string $input, array $settings ) {
+        $api_key = trim( $settings['openai_api_key'] ?? '' );
+        $model   = $this->get_provider_model( 'openai', $settings );
+
+        if ( empty( $api_key ) ) {
+            return new WP_Error( 'missing_api_key', __( 'OpenAI API key is not configured.', 'zencoupon-ai-assistant' ) );
+        }
+
+        return array(
+            'headers' => array(
+                'Content-Type'  => 'application/json',
+                'Authorization' => 'Bearer ' . $api_key,
+            ),
+            'body'    => wp_json_encode( array(
+                'model'       => $model,
+                'input'       => array(
+                    array(
+                        'role'    => 'system',
+                        'content' => $this->get_system_prompt(),
+                    ),
+                    array(
+                        'role'    => 'user',
+                        'content' => $input,
+                    ),
+                ),
+                'max_output_tokens' => 512,
+            ) ),
+            'timeout' => 30,
+        );
+    }
+
+    private function build_gemini_request( string $input, array $settings ) {
+        $api_key = trim( $settings['gemini_api_key'] ?? '' );
+        $model   = $this->get_provider_model( 'gemini', $settings );
+
+        if ( empty( $api_key ) ) {
+            return new WP_Error( 'missing_api_key', __( 'Gemini API key is not configured.', 'zencoupon-ai-assistant' ) );
+        }
+
+        return array(
+            'url'  => self::GEMINI_API_ENDPOINT . rawurlencode( $model ) . ':generateContent?key=' . rawurlencode( $api_key ),
+            'args' => array(
+                'headers' => array(
+                    'Content-Type' => 'application/json',
+                ),
+                'body'    => wp_json_encode( array(
+                    'contents'         => array(
+                        array(
+                            'parts' => array(
+                                array(
+                                    'text' => $this->get_system_prompt() . "\n\nUser instruction:\n" . $input,
+                                ),
+                            ),
+                        ),
+                    ),
+                    'generationConfig' => array(
+                        'temperature'     => 0,
+                        'maxOutputTokens' => 512,
+                    ),
+                ) ),
+                'timeout' => 30,
+            ),
+        );
+    }
+
+    private function parse_groq_response( $response ) {
+        $status_code   = wp_remote_retrieve_response_code( $response );
+        $response_body = wp_remote_retrieve_body( $response );
+        $data          = json_decode( $response_body, true );
+
+        if ( 200 !== $status_code || empty( $data['choices'][0]['message']['content'] ) ) {
+            return $this->api_error_from_response( $data, $status_code, 'Groq' );
+        }
+
+        return $this->parse_tool_call_json( $data['choices'][0]['message']['content'] );
+    }
+
+    private function parse_openai_response( $response ) {
         $status_code   = wp_remote_retrieve_response_code( $response );
         $response_body = wp_remote_retrieve_body( $response );
         $data          = json_decode( $response_body, true );
 
         if ( 200 !== $status_code ) {
+            return $this->api_error_from_response( $data, $status_code, 'OpenAI' );
+        }
 
-            if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-                error_log(
-                    'Gemini Full Error Response: ' .
-                    print_r( $data, true )
-                );
+        $text = '';
+
+        if ( isset( $data['output_text'] ) && is_string( $data['output_text'] ) ) {
+            $text = $data['output_text'];
+        } elseif ( ! empty( $data['output'] ) && is_array( $data['output'] ) ) {
+            foreach ( $data['output'] as $item ) {
+                if ( empty( $item['content'] ) || ! is_array( $item['content'] ) ) {
+                    continue;
+                }
+
+                foreach ( $item['content'] as $content ) {
+                    if ( isset( $content['text'] ) && is_string( $content['text'] ) ) {
+                        $text .= $content['text'];
+                    }
+                }
             }
-
-            return new WP_Error(
-                'gemini_error',
-                sprintf(
-                    /* translators: 1: HTTP status code, 2: API service name */
-                    __( '%2$s API returned HTTP %1$d.', 'zencoupon-ai-assistant' ),
-                    $status_code,
-                    'Gemini'
-                )
-            );
         }
 
-        if ( isset( $data['error'] ) ) {
-
-            return new WP_Error(
-                'gemini_error',
-                $data['error']['message']
-            );
+        if ( '' === trim( $text ) ) {
+            return $this->api_error_from_response( $data, $status_code, 'OpenAI' );
         }
 
-        if ( ! isset( $data['candidates'] ) || ! isset( $data['candidates'][0]['content']['parts'][0]['text'] ) ) {
+        return $this->parse_tool_call_json( $text );
+    }
 
-            if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-                error_log(
-                    'Gemini Invalid Structure: ' .
-                    print_r( $data, true )
-                );
-            }
+    private function parse_gemini_response( $response ) {
+        $status_code   = wp_remote_retrieve_response_code( $response );
+        $response_body = wp_remote_retrieve_body( $response );
+        $data          = json_decode( $response_body, true );
 
-            return new WP_Error(
-                'gemini_error',
-                __( 'Gemini response format invalid.', 'zencoupon-ai-assistant' )
-            );
+        if ( 200 !== $status_code || empty( $data['candidates'][0]['content']['parts'][0]['text'] ) ) {
+            return $this->api_error_from_response( $data, $status_code, 'Gemini' );
         }
 
-        $text = $data['candidates'][0]['content']['parts'][0]['text'];
+        return $this->parse_tool_call_json( $data['candidates'][0]['content']['parts'][0]['text'] );
+    }
 
-        if ( empty( $text ) ) {
+    private function parse_tool_call_json( string $text ) {
+        $decoded = json_decode( $this->clean_ai_response( $text ), true );
 
-            return new WP_Error(
-                'gemini_error',
-                __( 'Gemini returned empty response.', 'zencoupon-ai-assistant' )
-            );
+        if ( ! is_array( $decoded ) || empty( $decoded['name'] ) || ! is_string( $decoded['name'] ) ) {
+            return new WP_Error( 'invalid_tool_response', __( 'Invalid AI JSON response.', 'zencoupon-ai-assistant' ) );
         }
 
-        return $this->parse_tool_call(
-            $this->clean_ai_response( $text )
+        return array(
+            'name'      => sanitize_text_field( $decoded['name'] ),
+            'arguments' => isset( $decoded['arguments'] ) && is_array( $decoded['arguments'] ) ? $decoded['arguments'] : array(),
         );
     }
 
-    private function get_ai_provider(): string {
+    private function clean_ai_response( string $response ): string {
+        $response = trim( $response );
+        $response = preg_replace( '/^```(?:json)?\s*/i', '', $response );
+        $response = preg_replace( '/\s*```$/', '', $response );
 
-        $settings = get_option(
-            ZenCoupon_AI_Assistant_Main::OPTION_KEY
-        );
-
-        return $settings['ai_provider'] ?? 'groq';
-    }
-
-    private function get_groq_api_key(): string {
-
-        $settings = get_option(
-            ZenCoupon_AI_Assistant_Main::OPTION_KEY
-        );
-
-        return $settings['groq_api_key'] ?? '';
-    }
-
-    private function get_groq_model_name(): string {
-
-        $settings = get_option(
-            ZenCoupon_AI_Assistant_Main::OPTION_KEY
-        );
-
-        return ! empty( $settings['groq_model_name'] )
-            ? $settings['groq_model_name']
-            : self::GROQ_DEFAULT_MODEL;
-    }
-
-    private function get_gemini_api_key(): string {
-
-        $settings = get_option(
-            ZenCoupon_AI_Assistant_Main::OPTION_KEY
-        );
-
-        return $settings['gemini_api_key'] ?? '';
-    }
-
-    private function get_gemini_model_name(): string {
-
-        $settings = get_option(
-            ZenCoupon_AI_Assistant_Main::OPTION_KEY
-        );
-
-        $model = $settings['gemini_model_name'] ?? '';
-
-        if (
-            empty( $model ) ||
-            'gemini-pro' === $model
-        ) {
-            return self::GEMINI_DEFAULT_MODEL;
+        if ( preg_match( '/\{(?:[^{}]|(?R))*\}/s', $response, $matches ) ) {
+            return trim( $matches[0] );
         }
 
-        return $model;
+        return $response;
     }
 
-    private function remote_post_with_retry(
-        string $url,
-        array $args,
-        string $provider = 'groq'
-    ) {
+    private function api_error_from_response( $data, int $status_code, string $provider ) {
+        $api_message = $this->extract_api_error_message( $data );
 
+        if ( ! empty( $api_message ) ) {
+            return new WP_Error( strtolower( $provider ) . '_error', $api_message );
+        }
+
+        return new WP_Error(
+            strtolower( $provider ) . '_error',
+            sprintf(
+                /* translators: 1: API service name, 2: HTTP status code */
+                __( '%1$s API returned an unexpected response. HTTP status: %2$d.', 'zencoupon-ai-assistant' ),
+                $provider,
+                $status_code
+            )
+        );
+    }
+
+    private function extract_api_error_message( $data ): string {
+        if ( isset( $data['error']['message'] ) ) {
+            return sanitize_text_field( $data['error']['message'] );
+        }
+
+        if ( isset( $data['error']['error']['message'] ) ) {
+            return sanitize_text_field( $data['error']['error']['message'] );
+        }
+
+        if ( isset( $data['message'] ) ) {
+            return sanitize_text_field( $data['message'] );
+        }
+
+        return '';
+    }
+
+    private function remote_post_with_retry( string $url, array $args, string $provider = 'groq' ) {
         $max_attempts = 3;
 
         for ( $attempt = 1; $attempt <= $max_attempts; $attempt++ ) {
-
             $response = wp_remote_post( $url, $args );
 
             if ( is_wp_error( $response ) ) {
-
                 if ( $attempt === $max_attempts ) {
                     return $response;
                 }
@@ -295,16 +379,8 @@ class ZenCoupon_AI_Assistant_Bridge {
 
             $status_code = wp_remote_retrieve_response_code( $response );
 
-            if (
-                in_array(
-                    $status_code,
-                    array( 429, 500, 502, 503, 504 ),
-                    true
-                )
-            ) {
-
+            if ( in_array( $status_code, array( 429, 500, 502, 503, 504 ), true ) ) {
                 if ( $attempt === $max_attempts ) {
-
                     return new WP_Error(
                         $provider . '_error',
                         sprintf(
@@ -333,74 +409,43 @@ class ZenCoupon_AI_Assistant_Bridge {
         );
     }
 
-    private function get_prompt_payload( string $input ): string {
+    private function get_settings(): array {
+        $settings = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
 
-        return $this->get_system_prompt()
-            . "\n\nUser instruction:\n"
-            . $input;
+        return is_array( $settings ) ? $settings : array();
     }
 
-    private function clean_ai_response( string $response ): string {
+    private function get_ai_provider( array $settings ): string {
+        $provider = isset( $settings['ai_provider'] ) ? sanitize_text_field( $settings['ai_provider'] ) : self::DEFAULT_PROVIDER;
 
-        $response = trim( $response );
+        return in_array( $provider, array( 'groq', 'openai', 'gemini' ), true ) ? $provider : self::DEFAULT_PROVIDER;
+    }
 
-        $response = preg_replace(
-            '/^```(?:json)?\s*/i',
-            '',
-            $response
-        );
+    private function get_provider_model( string $provider, array $settings ): string {
+        $key   = $provider . '_model_name';
+        $model = isset( $settings[ $key ] ) ? sanitize_text_field( $settings[ $key ] ) : '';
 
-        $response = preg_replace(
-            '/\s*```$/',
-            '',
-            $response
-        );
-
-        if (
-            preg_match(
-                '/\{(?:[^{}]|(?R))*\}/s',
-                $response,
-                $matches
-            )
-        ) {
-            return trim( $matches[0] );
+        if ( 'groq' === $provider && 'llama3-8b-8192' === $model ) {
+            return self::GROQ_DEFAULT_MODEL;
         }
 
-        return $response;
+        if ( '' === trim( $model ) ) {
+            return self::get_default_model_for_provider( $provider );
+        }
+
+        return $model;
     }
 
     private function get_system_prompt(): string {
-
         return 'You are a WooCommerce coupon management assistant. '
-            . 'You must respond with ONLY valid JSON in this exact format: {"name":"tool_name","arguments":{}} '
-            . 'Do not explain anything. Do not use markdown. '
-            . 'Available tools: '
-            . '1. create_coupon: Creates a new WooCommerce coupon. Arguments: '
-            . '{"code":"string","amount":"number","discount_type":"percent|fixed_cart|fixed_product","expiry_date":"YYYY-MM-DD","minimum_amount":"number","maximum_amount":"number","usage_limit":"number","usage_limit_per_user":"number","individual_use":"boolean","free_shipping":"boolean","exclude_sale_items":"boolean","email_restrictions":["email1","email2"],"product_categories":[1,2],"excluded_product_categories":[3,4]} '
-            . '2. list_coupons: Lists all coupons. Arguments: {} '
-            . '3. list_generated_coupons: Lists AI-generated coupons. Arguments: {} '
-            . '4. delete_coupon: Deletes a coupon. Arguments: {"coupon_id":"number"} '
-            . 'Example: {"name":"create_coupon","arguments":{"code":"SAVE10","amount":10,"discount_type":"percent"}}';
-    }
-
-    private function parse_tool_call( string $response ) {
-
-        $decoded = json_decode( $response, true );
-
-        if (
-            ! is_array( $decoded ) ||
-            empty( $decoded['name'] )
-        ) {
-
-            return new WP_Error(
-                'invalid_tool_response',
-                __( 'Invalid AI JSON response.', 'zencoupon-ai-assistant' )
-            );
-        }
-
-        return array(
-            'name'      => $decoded['name'],
-            'arguments' => $decoded['arguments'] ?? array(),
-        );
+            . 'Return ONLY valid JSON. Do not use markdown. Do not explain anything. '
+            . 'The JSON shape must be exactly {"name":"tool_name","arguments":{}}. '
+            . 'Allowed tools are create_coupon, update_coupon, list_coupons, list_generated_coupons, and delete_coupon. '
+            . 'For create_coupon, supported arguments are: code string, amount number, discount_type percent|fixed_cart|fixed_product, expiry_date YYYY-MM-DD, minimum_amount number, maximum_amount number, usage_limit number, usage_limit_per_user number, individual_use boolean, free_shipping boolean, exclude_sale_items boolean, email_restrictions array, product_categories array of IDs, excluded_product_categories array of IDs. '
+            . 'For update_coupon, supported arguments are: coupon_id number or code string, plus any create_coupon fields that should change. '
+            . 'Use update_coupon when the user asks to edit, update, change, modify, revise, adjust, or refers to an existing, recent, latest, or last coupon. Do not create a new coupon for edit or update requests. '
+            . 'If the user asks for a percentage discount, use discount_type percent. If they ask for a fixed/cart amount, use fixed_cart. '
+            . 'Do not invent product category IDs, excluded category IDs, product IDs, or email restrictions unless they are provided in the user instruction. '
+            . 'For create_coupon only, if no coupon code is provided, generate a short uppercase code related to the instruction.';
     }
 }

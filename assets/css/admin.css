@@ -45,6 +45,14 @@
     width: 100%;
 }
 
+.col-lg-7 {
+    width: 100%;
+}
+
+.col-lg-5 {
+    width: 100%;
+}
+
 .col-lg-4 {
     width: 100%;
 }
@@ -56,6 +64,14 @@
 
     .col-lg-4 {
         width: 30%;
+    }
+
+    .col-lg-7 {
+        width: 58.3333%;
+    }
+
+    .col-lg-5 {
+        width: 41.6667%;
     }
 }
 
@@ -85,6 +101,36 @@
 
 .card-body {
     padding: 0;
+}
+
+.zencoupon-main-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+    gap: 16px;
+    margin-right: 0;
+    margin-left: 0;
+}
+
+.zencoupon-main-grid > [class*="col-"] {
+    width: auto;
+    max-width: none;
+    padding-right: 0;
+    padding-left: 0;
+}
+
+.zencoupon-main-grid > [class*="col-"] > .card {
+    width: 100%;
+    max-width: none;
+}
+
+.zencoupon-main-grid > [class*="col-"] > .card:first-child {
+    margin-top: 0;
+}
+
+@media (max-width: 991px) {
+    .zencoupon-main-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .shadow-sm {
@@ -169,6 +215,30 @@ label {
     display: block;
     margin-bottom: 6px;
     color: #444;
+}
+
+.form-text {
+    margin-top: 6px;
+    color: #6b7280;
+    font-size: 12px;
+}
+
+.input-group {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+}
+
+.input-group .form-control {
+    flex: 1 1 auto;
+    min-width: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.input-group .btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
 }
 
 .nav {
@@ -287,6 +357,14 @@ label {
 
 .text-muted {
     color: #6b7280;
+}
+
+.text-success {
+    color: #15803d;
+}
+
+.text-danger {
+    color: #b91c1c;
 }
 
 .text-uppercase {

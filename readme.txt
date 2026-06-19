@@ -11,10 +11,11 @@ License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Generate and manage WooCommerce coupons using AI with natural language commands.
 
 == External Services ==
-This plugin connects to external AI APIs (Groq and Google Gemini) to process natural language commands and generate WooCommerce coupon configurations. 
+This plugin connects to external AI APIs (Groq, OpenAI, and Google Gemini) to process natural language commands and generate WooCommerce coupon configurations. 
 
 * Data Sent: User-provided natural language prompts describing coupon requirements. No user personal data, customer data, or store financial data is transmitted.
 * Groq AI: Service provided by Groq, Inc. Endpoint: https://api.groq.com/openai/v1/chat/completions. [Terms of Service](https://groq.com/terms-of-service/) | [Privacy Policy](https://groq.com/privacy-policy/)
+* OpenAI: Service provided by OpenAI, L.L.C. Endpoint: https://api.openai.com/v1/responses. [Terms of Use](https://openai.com/policies/terms-of-use/) | [Privacy Policy](https://openai.com/policies/privacy-policy/)
 * Google Gemini: Service provided by Google LLC. Endpoint: https://generativelanguage.googleapis.com/v1beta/models/. [Terms of Service](https://policies.google.com/terms) | [Privacy Policy](https://policies.google.com/privacy)
 
 == Description ==
@@ -24,7 +25,7 @@ ZenCoupon AI Assistant is a powerful WordPress plugin that integrates with WooCo
 === Features ===
 
 * **AI-Powered Coupon Generation:** Create coupons using natural language instructions
-* **Multiple AI Providers:** Support for Groq and Google Gemini AI. Currently working with Groq AI only, others will be added soon.
+* **Multiple AI Providers:** Generate coupon configurations using Groq, OpenAI/GPT, or Google Gemini.
 * **Easy Management:** List, delete, and manage your AI-generated coupons
 * **Flexible Discount Types:** Percent or fixed amount discounts
 * **Advanced Settings:** 
@@ -42,15 +43,23 @@ ZenCoupon AI Assistant is a powerful WordPress plugin that integrates with WooCo
 === Supported AI Providers ===
 
 **Groq AI** (Recommended for speed)
-* Model: llama3-8b-8192
+* Model: llama-3.1-8b-instant
 * Fast inference with excellent accuracy
+
+**OpenAI/GPT**
+* Default model: gpt-5.5
+* Low-cost model options: gpt-5.4-mini and gpt-5.4-nano
+
+**Google Gemini**
+* Default model: gemini-2.5-flash
+* Flash models are useful for fast structured responses
 
 === Requirements ===
 
 * WordPress 5.0 or higher
 * PHP 7.4 or higher
 * WooCommerce 3.0 or higher
-* Active API key from Groq or Google Gemini
+* Active API key from Groq, OpenAI, or Google Gemini
 
 == Installation ==
 
@@ -79,8 +88,8 @@ ZenCoupon AI Assistant is a powerful WordPress plugin that integrates with WooCo
 === 2. Configure Plugin ===
 
 1. In WordPress admin, go to **Wordpress Dashboard > ZenCoupon AI**
-2. Select your preferred AI provider (Groq or Gemini)
-3. Enter your API key
+2. Select your AI provider
+3. Enter your provider API key
 4. (Optional) Change the model name
 5. Click **Save Settings**
 
@@ -173,7 +182,7 @@ The model name may be deprecated
 
 The plugin auto-updates deprecated models to current versions
 
-Try switching between Groq and Gemini to find a working option
+Try using a currently supported Groq model name.
 
 === "Invalid JSON Response" Error ===
 
@@ -226,7 +235,7 @@ HTTPS is recommended for all API calls
 
 == Performance Tips ==
 
-Use Groq AI for faster responses (recommended)
+Use Groq AI for faster responses, OpenAI/GPT for high-quality structured output, or Gemini Flash models for fast structured responses
 
 Set lower temperatures (0.0-0.3) for more consistent results
 
@@ -246,7 +255,7 @@ Fixed unique prefix constraints and refactored plugin structure.
 
 Updated text domain to match plugin slug.
 
-Added missing external services disclosure for Groq and Gemini.
+Added missing external services disclosure for Groq, OpenAI, and Gemini.
 
 === 1.0.0 ===
 

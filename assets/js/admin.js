@@ -5,6 +5,8 @@
 (function() {
     'use strict';
 
+    let testConnectionNoticeTimer = null;
+
     // Initialize on document ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initZenCoupon);
@@ -18,9 +20,9 @@
         
         // Buttons
         initButtons();
-        
-        // Form interactions
-        initFormInteractions();
+
+        // Provider settings
+        initProviderSettings();
         
         // Dynamic content
         initDynamicContent();
@@ -83,6 +85,11 @@
         if (resetButton) {
             resetButton.addEventListener('click', resetForm);
         }
+
+        const polishButton = document.getElementById('zencoupon-polish-button');
+        if (polishButton) {
+            polishButton.addEventListener('click', polishPrompt);
+        }
         
         // Suggested prompts
         document.querySelectorAll('.zencoupon-suggested-prompt').forEach(btn => {
@@ -98,16 +105,25 @@
         if (toggleApiKey) {
             toggleApiKey.addEventListener('click', function(e) {
                 e.preventDefault();
-                togglePasswordField('groq_api_key');
+                togglePasswordField('groq_api_key', e.currentTarget);
             });
         }
-        
-        const toggleGeminiKey = document.getElementById('zencoupon-toggle-gemini-api-key');
-        if (toggleGeminiKey) {
-            toggleGeminiKey.addEventListener('click', function(e) {
+
+        document.querySelectorAll('.zencoupon-toggle-api-key').forEach(btn => {
+            btn.addEventListener('click', function(e) {
                 e.preventDefault();
-                togglePasswordField('gemini_api_key');
+                togglePasswordField(this.getAttribute('data-field'), this);
             });
+        });
+
+        const testConnection = document.getElementById('zencoupon-test-connection');
+        if (testConnection) {
+            testConnection.addEventListener('click', testProviderConnection);
+        }
+
+        const supportForm = document.getElementById('zencoupon-support-form');
+        if (supportForm) {
+            supportForm.addEventListener('submit', sendSupportRequest);
         }
         
         // Delete coupon buttons
@@ -125,49 +141,196 @@
     }
 
     /**
-     * Initialize form interactions
-     */
-    function initFormInteractions() {
-        // AI Provider selection changes
-        const aiProviderSelect = document.getElementById('ai_provider');
-        if (aiProviderSelect) {
-            aiProviderSelect.addEventListener('change', toggleProviderSettings);
-            // Trigger on load
-            toggleProviderSettings();
-        }
-    }
-
-    /**
-     * Toggle between Groq and Gemini settings
-     */
-    function toggleProviderSettings() {
-        const provider = document.getElementById('ai_provider')?.value || 'groq';
-        const groqSettings = document.getElementById('groq-settings');
-        const geminiSettings = document.getElementById('gemini-settings');
-        
-        if (groqSettings) {
-            groqSettings.style.display = provider === 'groq' ? 'block' : 'none';
-        }
-        if (geminiSettings) {
-            geminiSettings.style.display = provider === 'gemini' ? 'block' : 'none';
-        }
-    }
-
-    /**
      * Toggle password field visibility
      */
-    function togglePasswordField(fieldName) {
+    function initProviderSettings() {
+        const providerSelect = document.getElementById('zencoupon-ai-provider');
+        if (providerSelect) {
+            providerSelect.addEventListener('change', updateProviderSettingsVisibility);
+            updateProviderSettingsVisibility();
+        }
+
+        document.querySelectorAll('.zencoupon-model-select').forEach(select => {
+            select.addEventListener('change', syncModelInputFromSelect);
+            syncModelInputFromSelect.call(select);
+        });
+    }
+
+    function updateProviderSettingsVisibility() {
+        const provider = document.getElementById('zencoupon-ai-provider')?.value || 'groq';
+
+        document.querySelectorAll('.zencoupon-provider-settings').forEach(panel => {
+            panel.style.display = panel.getAttribute('data-provider') === provider ? 'block' : 'none';
+        });
+    }
+
+    function syncModelInputFromSelect() {
+        const inputId = this.getAttribute('data-input');
+        const input = document.getElementById(inputId);
+        if (!input) return;
+
+        const isCustom = this.value === '__custom__';
+        input.style.display = isCustom ? 'block' : 'none';
+
+        if (!isCustom) {
+            input.value = this.value;
+        }
+    }
+
+    function togglePasswordField(fieldName, button) {
         const field = document.querySelector(`input[name*="${fieldName}"]`);
         if (!field) return;
         
         const isPassword = field.type === 'password';
         field.type = isPassword ? 'text' : 'password';
         
-        // Update button text
-        const button = event.target;
         if (button) {
             button.textContent = isPassword ? 'Hide' : 'Show';
         }
+    }
+
+    async function testProviderConnection(e) {
+        e.preventDefault();
+
+        const button = document.getElementById('zencoupon-test-connection');
+        const resultEl = document.getElementById('zencoupon-test-connection-result');
+        if (!button || !resultEl) return;
+
+        clearTestConnectionNoticeTimer();
+        button.disabled = true;
+        resultEl.textContent = 'Testing...';
+        resultEl.className = 'small text-muted';
+
+        try {
+            const settingsForm = document.querySelector('form[action="options.php"]');
+            const data = settingsForm ? new FormData(settingsForm) : new FormData();
+            data.set('action', 'zencoupon_ai_assistant_test_connection');
+            data.set('nonce', ZenCouponAIAssistantData.nonce);
+
+            const response = await fetch(ZenCouponAIAssistantData.ajax_url, {
+                method: 'POST',
+                body: data
+            });
+            const result = await response.json();
+
+            resultEl.textContent = result.success
+                ? (result.data?.message || 'Connection successful.')
+                : (result.data?.message || 'Connection failed.');
+            resultEl.className = result.success ? 'small text-success' : 'small text-danger';
+            scheduleTestConnectionNoticeClear(resultEl);
+        } catch (error) {
+            resultEl.textContent = 'Error: ' + error.message;
+            resultEl.className = 'small text-danger';
+            scheduleTestConnectionNoticeClear(resultEl);
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    function clearTestConnectionNoticeTimer() {
+        if (testConnectionNoticeTimer) {
+            clearTimeout(testConnectionNoticeTimer);
+            testConnectionNoticeTimer = null;
+        }
+    }
+
+    function scheduleTestConnectionNoticeClear(resultEl) {
+        clearTestConnectionNoticeTimer();
+        testConnectionNoticeTimer = setTimeout(() => {
+            resultEl.textContent = '';
+            resultEl.className = 'small text-muted';
+            testConnectionNoticeTimer = null;
+        }, 5000);
+    }
+
+    function polishPrompt(e) {
+        e.preventDefault();
+
+        const commandEl = document.getElementById('zencoupon-command');
+        const form = document.getElementById('zencoupon-command-form');
+        if (!commandEl || !form) return;
+
+        const formData = new FormData(form);
+        const original = commandEl.value.trim();
+        const lower = original.toLowerCase();
+
+        let code = '';
+        let amount = '';
+        let type = 'percent';
+
+        const amountMatch = original.match(/(\d+(?:\.\d+)?)\s*(%|percent|fixed|tk|\$|usd)?/i);
+        if (amountMatch) {
+            amount = amountMatch[1];
+            if (amountMatch[2] && !['%', 'percent'].includes(amountMatch[2].toLowerCase())) {
+                type = 'fixed cart';
+            }
+        }
+
+        const codeMatch = original.match(/\b([A-Z0-9]{4,20})\b/);
+        if (codeMatch) {
+            code = codeMatch[1].toUpperCase();
+        } else if (lower.includes('blackfriday')) {
+            code = 'BLACKFRIDAY';
+        } else if (lower.includes('summer')) {
+            code = 'SUMMER';
+        }
+
+        const isUpdateIntent = /\b(edit|update|change|modify|revise|adjust|existing|recent|latest|last)\b/i.test(original);
+        const recentIntent = /\b(recent|latest|last)\b/i.test(original);
+        const recentCoupon = getRecentGeneratedCoupon();
+
+        let polished = '';
+        if (isUpdateIntent) {
+            if (recentIntent && recentCoupon) {
+                polished = `Update coupon ID ${recentCoupon.id}`;
+                if (recentCoupon.code) {
+                    polished += ` (${recentCoupon.code})`;
+                }
+            } else if (code) {
+                polished = `Update coupon code ${code}`;
+            } else {
+                polished = 'Update the existing coupon';
+            }
+        } else {
+            polished = 'Create ';
+            polished += code ? `a coupon code ${code}` : 'a coupon';
+        }
+
+        if (amount) {
+            const amountText = type === 'percent' ? `${amount}% discount` : `${amount} fixed cart discount`;
+            polished += isUpdateIntent ? ` and set discount to ${amountText}` : ` with ${amountText}`;
+        } else {
+            polished += isUpdateIntent ? ' with the requested changes' : ' with a clear discount amount';
+        }
+
+        const restrictions = [];
+        if (formData.get('minimum_amount')) restrictions.push(`minimum spend ${formData.get('minimum_amount')}`);
+        if (formData.get('maximum_amount')) restrictions.push(`maximum spend ${formData.get('maximum_amount')}`);
+        if (formData.get('usage_limit')) restrictions.push(`usage limit ${formData.get('usage_limit')}`);
+        if (formData.get('usage_limit_per_user')) restrictions.push(`usage limit per user ${formData.get('usage_limit_per_user')}`);
+        if (formData.get('expiry_date')) restrictions.push(`expires on ${formData.get('expiry_date')}`);
+        if (formData.get('free_shipping')) restrictions.push('include free shipping');
+        if (formData.get('individual_use')) restrictions.push('individual use only');
+        if (formData.get('exclude_sale_items')) restrictions.push('exclude sale items');
+
+        if (restrictions.length) {
+            polished += ', ' + restrictions.join(', ');
+        }
+
+        commandEl.value = polished + '.';
+    }
+
+    function getRecentGeneratedCoupon() {
+        const row = document.querySelector('#zencoupon-generated-coupons-wrapper tbody tr');
+        if (!row) return null;
+
+        const codeEl = row.querySelector('.font-monospace');
+        const id = row.getAttribute('data-coupon-id') || '';
+        const code = codeEl ? codeEl.textContent.trim() : '';
+
+        if (!id && !code) return null;
+
+        return { id, code };
     }
 
     /**
@@ -438,6 +601,39 @@
             }
         } catch (error) {
             showAlert('Error: ' + error.message, 'danger');
+        }
+    }
+
+    async function sendSupportRequest(e) {
+        e.preventDefault();
+
+        const form = document.getElementById('zencoupon-support-form');
+        const resultEl = document.getElementById('zencoupon-support-result');
+        if (!form || !resultEl) return;
+
+        const data = new FormData(form);
+        data.append('action', 'zencoupon_ai_assistant_send_support');
+        data.append('nonce', ZenCouponAIAssistantData.nonce);
+
+        resultEl.textContent = 'Sending...';
+        resultEl.className = 'small text-muted mt-3';
+
+        try {
+            const response = await fetch(ZenCouponAIAssistantData.ajax_url, {
+                method: 'POST',
+                body: data
+            });
+            const result = await response.json();
+
+            resultEl.textContent = result.data?.message || (result.success ? 'Support request sent.' : 'Support request failed.');
+            resultEl.className = result.success ? 'small text-success mt-3' : 'small text-danger mt-3';
+
+            if (result.success) {
+                form.reset();
+            }
+        } catch (error) {
+            resultEl.textContent = 'Error: ' + error.message;
+            resultEl.className = 'small text-danger mt-3';
         }
     }
 

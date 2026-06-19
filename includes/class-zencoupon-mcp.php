@@ -81,6 +81,8 @@ class ZenCoupon_AI_Assistant_MCP {
         switch ( $method ) {
             case 'create_coupon':
                 return $actions->create_coupon( (array) $params );
+            case 'update_coupon':
+                return $actions->update_coupon( (array) $params );
             case 'list_coupons':
                 return $actions->list_coupons();
             case 'list_generated_coupons':
