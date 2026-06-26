@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ZenCoupon_AI_Assistant_Actions {
     public function create_coupon( array $data ): array {
         if ( ! class_exists( 'WC_Coupon' ) ) {
-            return array( 'error' => 'WooCommerce is required to create coupons.' );
+            return array( 'error' => __( 'WooCommerce is required to create coupons.', 'zencoupon-ai-assistant' ) );
         }
 
         $code = isset( $data['code'] ) ? sanitize_text_field( $data['code'] ) : '';
@@ -16,16 +16,16 @@ class ZenCoupon_AI_Assistant_Actions {
         $expiry_date = isset( $data['expiry_date'] ) ? sanitize_text_field( $data['expiry_date'] ) : '';
 
         if ( empty( $code ) ) {
-            return array( 'error' => 'Coupon code is required.' );
+            return array( 'error' => __( 'Coupon code is required.', 'zencoupon-ai-assistant' ) );
         }
 
         if ( $amount <= 0 ) {
-            return array( 'error' => 'Coupon amount must be greater than zero.' );
+            return array( 'error' => __( 'Coupon amount must be greater than zero.', 'zencoupon-ai-assistant' ) );
         }
 
         $discount_type = $this->normalize_discount_type( $discount_type );
         if ( ! in_array( $discount_type, array( 'percent', 'fixed_cart', 'fixed_product' ), true ) ) {
-            return array( 'error' => 'Discount type must be percentage or fixed.' );
+            return array( 'error' => __( 'Discount type must be percentage or fixed.', 'zencoupon-ai-assistant' ) );
         }
 
         $coupon_data = array(
@@ -41,7 +41,7 @@ class ZenCoupon_AI_Assistant_Actions {
             if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
                 error_log( 'ZenCoupon: Failed to create coupon post. Error: ' . ( is_wp_error( $coupon_id ) ? $coupon_id->get_error_message() : 'Invalid ID' ) );
             }
-            return array( 'error' => 'Unable to create coupon.' );
+            return array( 'error' => __( 'Unable to create coupon.', 'zencoupon-ai-assistant' ) );
         }
 
         $coupon = new WC_Coupon( $coupon_id );
@@ -126,19 +126,19 @@ class ZenCoupon_AI_Assistant_Actions {
             'amount'        => $amount,
             'discount_type' => $discount_type,
             'expiry_date'   => $expiry_date,
-            'message'       => 'Coupon created successfully.',
+            'message'       => __( 'Coupon created successfully.', 'zencoupon-ai-assistant' ),
         );
     }
 
     public function update_coupon( array $data ): array {
         if ( ! class_exists( 'WC_Coupon' ) ) {
-            return array( 'error' => 'WooCommerce is required to update coupons.' );
+            return array( 'error' => __( 'WooCommerce is required to update coupons.', 'zencoupon-ai-assistant' ) );
         }
 
         $coupon_id = $this->resolve_coupon_id( $data );
 
         if ( $coupon_id <= 0 || 'shop_coupon' !== get_post_type( $coupon_id ) ) {
-            return array( 'error' => 'Invalid coupon ID or code for update.' );
+            return array( 'error' => __( 'Invalid coupon ID or code for update.', 'zencoupon-ai-assistant' ) );
         }
 
         $coupon = new WC_Coupon( $coupon_id );
@@ -156,7 +156,7 @@ class ZenCoupon_AI_Assistant_Actions {
         if ( isset( $data['amount'] ) ) {
             $amount = floatval( $data['amount'] );
             if ( $amount <= 0 ) {
-                return array( 'error' => 'Coupon amount must be greater than zero.' );
+                return array( 'error' => __( 'Coupon amount must be greater than zero.', 'zencoupon-ai-assistant' ) );
             }
             $coupon->set_amount( wc_format_decimal( $amount ) );
         }
@@ -164,7 +164,7 @@ class ZenCoupon_AI_Assistant_Actions {
         if ( isset( $data['discount_type'] ) ) {
             $discount_type = $this->normalize_discount_type( sanitize_text_field( $data['discount_type'] ) );
             if ( ! in_array( $discount_type, array( 'percent', 'fixed_cart', 'fixed_product' ), true ) ) {
-                return array( 'error' => 'Discount type must be percentage or fixed.' );
+                return array( 'error' => __( 'Discount type must be percentage or fixed.', 'zencoupon-ai-assistant' ) );
             }
             $coupon->set_discount_type( $discount_type );
         }
@@ -236,13 +236,13 @@ class ZenCoupon_AI_Assistant_Actions {
             'amount'        => wc_format_decimal( $updated_coupon->get_amount() ),
             'discount_type' => $updated_coupon->get_discount_type(),
             'expiry_date'   => $expiry_date,
-            'message'       => 'Coupon updated successfully.',
+            'message'       => __( 'Coupon updated successfully.', 'zencoupon-ai-assistant' ),
         );
     }
 
     public function list_coupons(): array {
         if ( ! class_exists( 'WC_Coupon' ) ) {
-            return array( 'error' => 'WooCommerce is required to list coupons.' );
+            return array( 'error' => __( 'WooCommerce is required to list coupons.', 'zencoupon-ai-assistant' ) );
         }
 
         $coupons = get_posts( array(
@@ -268,7 +268,7 @@ class ZenCoupon_AI_Assistant_Actions {
 
     public function list_generated_coupons(): array {
         if ( ! class_exists( 'WC_Coupon' ) ) {
-            return array( 'error' => 'WooCommerce is required to list coupons.' );
+            return array( 'error' => __( 'WooCommerce is required to list coupons.', 'zencoupon-ai-assistant' ) );
         }
 
         // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Using meta_query to find AI-generated coupons by custom meta key.
@@ -340,25 +340,25 @@ class ZenCoupon_AI_Assistant_Actions {
 
     public function delete_coupon( $coupon_id ): array {
         if ( ! class_exists( 'WC_Coupon' ) ) {
-            return array( 'error' => 'WooCommerce is required to delete coupons.' );
+            return array( 'error' => __( 'WooCommerce is required to delete coupons.', 'zencoupon-ai-assistant' ) );
         }
 
         $coupon_id = absint( $coupon_id );
 
         if ( $coupon_id <= 0 || 'shop_coupon' !== get_post_type( $coupon_id ) ) {
-            return array( 'error' => 'Invalid coupon ID.' );
+            return array( 'error' => __( 'Invalid coupon ID.', 'zencoupon-ai-assistant' ) );
         }
 
         $deleted = wp_delete_post( $coupon_id, true );
 
         if ( ! $deleted ) {
-            return array( 'error' => 'Unable to delete coupon.' );
+            return array( 'error' => __( 'Unable to delete coupon.', 'zencoupon-ai-assistant' ) );
         }
 
         return array(
             'coupon_id' => $coupon_id,
             'deleted'   => true,
-            'message'   => 'Coupon deleted successfully.',
+            'message'   => __( 'Coupon deleted successfully.', 'zencoupon-ai-assistant' ),
         );
     }
 

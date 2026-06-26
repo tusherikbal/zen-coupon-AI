@@ -59,37 +59,58 @@ class ZenCoupon_AI_Assistant_Bridge {
     }
 
     public function call_ai( string $input ) {
+        return $this->call_coupon_generator( $input );
+    }
+
+    public function call_coupon_generator( string $input ) {
+        return $this->call_ai_with_prompt(
+            $input,
+            $this->get_coupon_generator_system_prompt(),
+            'tool_call'
+        );
+    }
+
+    public function call_campaign_builder( string $input ) {
+        return $this->call_ai_with_prompt(
+            $input,
+            $this->get_campaign_builder_system_prompt(),
+            'json'
+        );
+    }
+
+    private function call_ai_with_prompt( string $input, string $system_prompt, string $response_format = 'tool_call' ) {
         $settings = $this->get_settings();
         $provider = $this->get_ai_provider( $settings );
 
         switch ( $provider ) {
             case 'openai':
-                return $this->call_openai( $input, $settings );
+                return $this->call_openai( $input, $settings, $system_prompt, $response_format );
             case 'gemini':
-                return $this->call_gemini( $input, $settings );
+                return $this->call_gemini( $input, $settings, $system_prompt, $response_format );
             case 'groq':
             default:
-                return $this->call_groq( $input, $settings );
+                return $this->call_groq( $input, $settings, $system_prompt, $response_format );
         }
     }
 
     public function test_connection( ?array $settings = null ) {
         $settings = is_array( $settings ) ? $settings : $this->get_settings();
         $provider = $this->get_ai_provider( $settings );
+        $prompt   = $this->get_coupon_generator_system_prompt();
 
         switch ( $provider ) {
             case 'openai':
-                return $this->call_openai( 'Create a test 10% coupon named TEST10. Return only the tool JSON.', $settings );
+                return $this->call_openai( 'Create a test 10% coupon named TEST10. Return only the tool JSON.', $settings, $prompt, 'tool_call' );
             case 'gemini':
-                return $this->call_gemini( 'Create a test 10% coupon named TEST10. Return only the tool JSON.', $settings );
+                return $this->call_gemini( 'Create a test 10% coupon named TEST10. Return only the tool JSON.', $settings, $prompt, 'tool_call' );
             case 'groq':
             default:
-                return $this->call_groq( 'Create a test 10% coupon named TEST10. Return only the tool JSON.', $settings );
+                return $this->call_groq( 'Create a test 10% coupon named TEST10. Return only the tool JSON.', $settings, $prompt, 'tool_call' );
         }
     }
 
-    private function call_groq( string $input, array $settings ) {
-        $request = $this->build_groq_request( $input, $settings );
+    private function call_groq( string $input, array $settings, string $system_prompt, string $response_format ) {
+        $request = $this->build_groq_request( $input, $settings, $system_prompt );
 
         if ( is_wp_error( $request ) ) {
             return $request;
@@ -105,11 +126,11 @@ class ZenCoupon_AI_Assistant_Bridge {
             return $response;
         }
 
-        return $this->parse_groq_response( $response );
+        return $this->parse_response_text( $this->extract_groq_response_text( $response ), $response_format );
     }
 
-    private function call_openai( string $input, array $settings ) {
-        $request = $this->build_openai_request( $input, $settings );
+    private function call_openai( string $input, array $settings, string $system_prompt, string $response_format ) {
+        $request = $this->build_openai_request( $input, $settings, $system_prompt );
 
         if ( is_wp_error( $request ) ) {
             return $request;
@@ -125,11 +146,11 @@ class ZenCoupon_AI_Assistant_Bridge {
             return $response;
         }
 
-        return $this->parse_openai_response( $response );
+        return $this->parse_response_text( $this->extract_openai_response_text( $response ), $response_format );
     }
 
-    private function call_gemini( string $input, array $settings ) {
-        $request = $this->build_gemini_request( $input, $settings );
+    private function call_gemini( string $input, array $settings, string $system_prompt, string $response_format ) {
+        $request = $this->build_gemini_request( $input, $settings, $system_prompt );
 
         if ( is_wp_error( $request ) ) {
             return $request;
@@ -145,10 +166,10 @@ class ZenCoupon_AI_Assistant_Bridge {
             return $response;
         }
 
-        return $this->parse_gemini_response( $response );
+        return $this->parse_response_text( $this->extract_gemini_response_text( $response ), $response_format );
     }
 
-    private function build_groq_request( string $input, array $settings ) {
+    private function build_groq_request( string $input, array $settings, string $system_prompt ) {
         $api_key = trim( $settings['groq_api_key'] ?? '' );
         $model   = $this->get_provider_model( 'groq', $settings );
 
@@ -166,7 +187,7 @@ class ZenCoupon_AI_Assistant_Bridge {
                 'messages'    => array(
                     array(
                         'role'    => 'system',
-                        'content' => $this->get_system_prompt(),
+                        'content' => $system_prompt,
                     ),
                     array(
                         'role'    => 'user',
@@ -180,7 +201,7 @@ class ZenCoupon_AI_Assistant_Bridge {
         );
     }
 
-    private function build_openai_request( string $input, array $settings ) {
+    private function build_openai_request( string $input, array $settings, string $system_prompt ) {
         $api_key = trim( $settings['openai_api_key'] ?? '' );
         $model   = $this->get_provider_model( 'openai', $settings );
 
@@ -198,7 +219,7 @@ class ZenCoupon_AI_Assistant_Bridge {
                 'input'       => array(
                     array(
                         'role'    => 'system',
-                        'content' => $this->get_system_prompt(),
+                        'content' => $system_prompt,
                     ),
                     array(
                         'role'    => 'user',
@@ -211,7 +232,7 @@ class ZenCoupon_AI_Assistant_Bridge {
         );
     }
 
-    private function build_gemini_request( string $input, array $settings ) {
+    private function build_gemini_request( string $input, array $settings, string $system_prompt ) {
         $api_key = trim( $settings['gemini_api_key'] ?? '' );
         $model   = $this->get_provider_model( 'gemini', $settings );
 
@@ -230,7 +251,7 @@ class ZenCoupon_AI_Assistant_Bridge {
                         array(
                             'parts' => array(
                                 array(
-                                    'text' => $this->get_system_prompt() . "\n\nUser instruction:\n" . $input,
+                                    'text' => $system_prompt . "\n\nUser instruction:\n" . $input,
                                 ),
                             ),
                         ),
@@ -245,7 +266,7 @@ class ZenCoupon_AI_Assistant_Bridge {
         );
     }
 
-    private function parse_groq_response( $response ) {
+    private function extract_groq_response_text( $response ) {
         $status_code   = wp_remote_retrieve_response_code( $response );
         $response_body = wp_remote_retrieve_body( $response );
         $data          = json_decode( $response_body, true );
@@ -254,10 +275,10 @@ class ZenCoupon_AI_Assistant_Bridge {
             return $this->api_error_from_response( $data, $status_code, 'Groq' );
         }
 
-        return $this->parse_tool_call_json( $data['choices'][0]['message']['content'] );
+        return $data['choices'][0]['message']['content'];
     }
 
-    private function parse_openai_response( $response ) {
+    private function extract_openai_response_text( $response ) {
         $status_code   = wp_remote_retrieve_response_code( $response );
         $response_body = wp_remote_retrieve_body( $response );
         $data          = json_decode( $response_body, true );
@@ -288,10 +309,10 @@ class ZenCoupon_AI_Assistant_Bridge {
             return $this->api_error_from_response( $data, $status_code, 'OpenAI' );
         }
 
-        return $this->parse_tool_call_json( $text );
+        return $text;
     }
 
-    private function parse_gemini_response( $response ) {
+    private function extract_gemini_response_text( $response ) {
         $status_code   = wp_remote_retrieve_response_code( $response );
         $response_body = wp_remote_retrieve_body( $response );
         $data          = json_decode( $response_body, true );
@@ -300,7 +321,19 @@ class ZenCoupon_AI_Assistant_Bridge {
             return $this->api_error_from_response( $data, $status_code, 'Gemini' );
         }
 
-        return $this->parse_tool_call_json( $data['candidates'][0]['content']['parts'][0]['text'] );
+        return $data['candidates'][0]['content']['parts'][0]['text'];
+    }
+
+    private function parse_response_text( $text, string $response_format ) {
+        if ( is_wp_error( $text ) ) {
+            return $text;
+        }
+
+        if ( 'json' === $response_format ) {
+            return $this->parse_plain_json( (string) $text );
+        }
+
+        return $this->parse_tool_call_json( (string) $text );
     }
 
     private function parse_tool_call_json( string $text ) {
@@ -314,6 +347,16 @@ class ZenCoupon_AI_Assistant_Bridge {
             'name'      => sanitize_text_field( $decoded['name'] ),
             'arguments' => isset( $decoded['arguments'] ) && is_array( $decoded['arguments'] ) ? $decoded['arguments'] : array(),
         );
+    }
+
+    private function parse_plain_json( string $text ) {
+        $decoded = json_decode( $this->clean_ai_response( $text ), true );
+
+        if ( ! is_array( $decoded ) ) {
+            return new WP_Error( 'invalid_json_response', __( 'Invalid AI JSON response.', 'zencoupon-ai-assistant' ) );
+        }
+
+        return $decoded;
     }
 
     private function clean_ai_response( string $response ): string {
@@ -436,16 +479,26 @@ class ZenCoupon_AI_Assistant_Bridge {
         return $model;
     }
 
-    private function get_system_prompt(): string {
+    private function get_coupon_generator_system_prompt(): string {
         return 'You are a WooCommerce coupon management assistant. '
             . 'Return ONLY valid JSON. Do not use markdown. Do not explain anything. '
             . 'The JSON shape must be exactly {"name":"tool_name","arguments":{}}. '
             . 'Allowed tools are create_coupon, update_coupon, list_coupons, list_generated_coupons, and delete_coupon. '
-            . 'For create_coupon, supported arguments are: code string, amount number, discount_type percent|fixed_cart|fixed_product, expiry_date YYYY-MM-DD, minimum_amount number, maximum_amount number, usage_limit number, usage_limit_per_user number, individual_use boolean, free_shipping boolean, exclude_sale_items boolean, email_restrictions array, product_categories array of IDs, excluded_product_categories array of IDs. '
+            . 'For create_coupon, supported arguments are: code string, amount number, discount_type percent|fixed_cart|fixed_product, expiry_date YYYY-MM-DD, minimum_amount number, maximum_amount number, usage_limit number, usage_limit_per_user number, individual_use boolean, free_shipping boolean, exclude_sale_items boolean, email_restrictions array, product_ids array of IDs, excluded_product_ids array of IDs, product_categories array of IDs, excluded_product_categories array of IDs. '
             . 'For update_coupon, supported arguments are: coupon_id number or code string, plus any create_coupon fields that should change. '
             . 'Use update_coupon when the user asks to edit, update, change, modify, revise, adjust, or refers to an existing, recent, latest, or last coupon. Do not create a new coupon for edit or update requests. '
             . 'If the user asks for a percentage discount, use discount_type percent. If they ask for a fixed/cart amount, use fixed_cart. '
             . 'Do not invent product category IDs, excluded category IDs, product IDs, or email restrictions unless they are provided in the user instruction. '
             . 'For create_coupon only, if no coupon code is provided, generate a short uppercase code related to the instruction.';
+    }
+
+    private function get_campaign_builder_system_prompt(): string {
+        return 'You are a WooCommerce coupon campaign planning assistant for ZenCoupon AI. '
+            . 'Return ONLY valid JSON. Do not use markdown. Do not explain anything. '
+            . 'Create campaign drafts only; never claim that a live automation has been activated. '
+            . 'The JSON must include: campaign_name string, campaign_type string, campaign_goal string, coupon_rule object, target_customer_segment string, trigger_suggestion string, email_subject string, email_body string, popup_text string, social_post_copy string, expiry_date string, usage_limits object, utm_tracking object, conditions object, actions object. '
+            . 'Supported campaign types are first_order_coupon, abandoned_cart_recovery, win_back_inactive_customer, birthday_anniversary_coupon, product_category_campaign, cross_sell_campaign, vip_customer_campaign, seasonal_campaign, and manual_campaign. '
+            . 'Keep actions coupon-focused: generate_coupon, send_coupon_email, auto_apply_coupon, show_coupon_popup, restore_abandoned_cart, log_analytics_event. '
+            . 'Do not include customer personal data. Do not require live AI calls during cart, checkout, order, or automation hooks.';
     }
 }

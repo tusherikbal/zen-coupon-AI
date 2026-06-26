@@ -6,13 +6,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class ZenCoupon_AI_Assistant_Admin {
     private string $page_hook = '';
+    private string $woo_automation_page_hook = '';
+    private string $settings_page_hook = '';
     private string $help_page_hook = '';
 
     // FIX: Single source of truth for required capability.
-    // manage_options ensures administrators always see the menu.
-    // WooCommerce shop managers have manage_woocommerce which implies manage_options is not guaranteed,
-    // so we keep manage_options as the base and check woocommerce caps separately where needed.
-    private const REQUIRED_CAP = 'manage_options';
+    // manage_woocommerce is granted to both administrators and shop managers,
+    // so the menu, page guards, AJAX handlers, and the MCP REST permission check
+    // now all resolve to the same capability instead of drifting apart.
+    private const REQUIRED_CAP = 'manage_woocommerce';
+
+    // Placeholder rendered in place of a saved API key so the secret is never
+    // exposed in page source. sanitize_settings() treats this exact value as
+    // "keep the existing key", so submitting an untouched form preserves it.
+    private const API_KEY_MASK = '********';
 
     public function __construct() {
         add_action( 'admin_menu', array( $this, 'register_menu' ) );
@@ -37,6 +44,24 @@ class ZenCoupon_AI_Assistant_Admin {
             array( $this, 'render_admin_page' ),
             'dashicons-smartphone',
             58
+        );
+
+        $this->woo_automation_page_hook = add_submenu_page(
+            ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG,
+            __( 'Woo Automation', 'zencoupon-ai-assistant' ),
+            __( 'Woo Automation', 'zencoupon-ai-assistant' ),
+            self::REQUIRED_CAP,
+            ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-woo-automation',
+            array( $this, 'render_woo_automation_page' )
+        );
+
+        $this->settings_page_hook = add_submenu_page(
+            ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG,
+            __( 'Settings', 'zencoupon-ai-assistant' ),
+            __( 'Settings', 'zencoupon-ai-assistant' ),
+            self::REQUIRED_CAP,
+            ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-settings',
+            array( $this, 'render_settings_page' )
         );
 
         $this->help_page_hook = add_submenu_page(
@@ -69,7 +94,7 @@ class ZenCoupon_AI_Assistant_Admin {
     }
 
     public function enqueue_assets( string $hook ): void {
-        if ( $hook !== $this->page_hook && $hook !== $this->help_page_hook ) {
+        if ( $hook !== $this->page_hook && $hook !== $this->woo_automation_page_hook && $hook !== $this->settings_page_hook && $hook !== $this->help_page_hook ) {
             return;
         }
 
@@ -102,15 +127,6 @@ class ZenCoupon_AI_Assistant_Admin {
         if ( ! $this->current_user_can_manage_coupons() ) {
             wp_die( esc_html__( 'Unauthorized', 'zencoupon-ai-assistant' ) );
         }
-
-        $settings        = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
-        $settings        = is_array( $settings ) ? $settings : array();
-        $provider_labels = ZenCoupon_AI_Assistant_Bridge::get_provider_labels();
-        $provider_models = ZenCoupon_AI_Assistant_Bridge::get_provider_models();
-        $ai_provider     = isset( $settings['ai_provider'] ) && isset( $provider_labels[ $settings['ai_provider'] ] )
-            ? sanitize_text_field( $settings['ai_provider'] )
-            : 'groq';
-        $active_api_key  = isset( $settings[ $ai_provider . '_api_key' ] ) ? sanitize_text_field( $settings[ $ai_provider . '_api_key' ] ) : '';
 
         $product_categories = get_terms( array(
             'taxonomy'   => 'product_cat',
@@ -185,6 +201,7 @@ class ZenCoupon_AI_Assistant_Admin {
                         <h1 class="h3 mb-1"><?php esc_html_e( 'ZenCoupon AI Assistant', 'zencoupon-ai-assistant' ); ?></h1>
                         <span class="badge bg-secondary">v<?php echo esc_html( ZenCoupon_AI_Assistant_Main::VERSION ); ?></span>
                     </div>
+                    <a class="btn btn-outline-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-settings' ) ); ?>"><?php esc_html_e( 'Settings', 'zencoupon-ai-assistant' ); ?></a>
                 </div>
 
                 <div class="row g-3 mb-4">
@@ -354,12 +371,65 @@ class ZenCoupon_AI_Assistant_Admin {
                     </div>
 
                     <div class="col-lg-5">
-                        <div class="card shadow-sm mb-4">
+                        <div class="card shadow-sm">
+                            <div class="card-body">
+                                <p class="text-muted text-uppercase small fw-semibold mb-3"><?php esc_html_e( 'Recent Activity', 'zencoupon-ai-assistant' ); ?></p>
+                                <div id="zencoupon-recent-activity">
+                                    <?php $this->render_recent_activity( $recent_activity ); ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+    public function render_settings_page(): void {
+        if ( ! $this->current_user_can_manage_coupons() ) {
+            wp_die( esc_html__( 'Unauthorized', 'zencoupon-ai-assistant' ) );
+        }
+
+        $settings         = get_option( ZenCoupon_AI_Assistant_Main::OPTION_KEY, array() );
+        $settings         = is_array( $settings ) ? $settings : array();
+        $provider_labels  = ZenCoupon_AI_Assistant_Bridge::get_provider_labels();
+        $provider_models  = ZenCoupon_AI_Assistant_Bridge::get_provider_models();
+        $ai_provider      = isset( $settings['ai_provider'] ) && isset( $provider_labels[ $settings['ai_provider'] ] )
+            ? sanitize_text_field( $settings['ai_provider'] )
+            : 'groq';
+        $active_api_key   = isset( $settings[ $ai_provider . '_api_key' ] ) ? sanitize_text_field( $settings[ $ai_provider . '_api_key' ] ) : '';
+        $settings_updated = isset( $_GET['settings-updated'] ) ? sanitize_text_field( wp_unslash( $_GET['settings-updated'] ) ) : '';
+        ?>
+        <div class="wrap">
+            <div class="container-fluid px-0">
+                <div class="d-flex flex-column flex-md-row align-items-start justify-content-between mb-4">
+                    <div>
+                        <h1 class="h3 mb-1"><?php esc_html_e( 'Settings', 'zencoupon-ai-assistant' ); ?></h1>
+                        <p class="text-muted mb-0"><?php esc_html_e( 'Manage shared ZenCoupon settings used by the coupon generator, campaign builder, and automation modules.', 'zencoupon-ai-assistant' ); ?></p>
+                    </div>
+                    <a class="btn btn-outline-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG ) ); ?>"><?php esc_html_e( 'Back to Coupon Generator', 'zencoupon-ai-assistant' ); ?></a>
+                </div>
+
+                <?php if ( 'true' === $settings_updated ) : ?>
+                    <div class="alert alert-success zencoupon-alert" role="alert">
+                        <?php esc_html_e( 'Settings saved successfully.', 'zencoupon-ai-assistant' ); ?>
+                        <button type="button" class="zencoupon-close-button" aria-label="<?php esc_attr_e( 'Close', 'zencoupon-ai-assistant' ); ?>">&times;</button>
+                    </div>
+                <?php endif; ?>
+
+                <div class="row g-4">
+                    <div class="col-lg-8">
+                        <div class="card shadow-sm">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
-                                    <p class="text-muted text-uppercase small fw-semibold mb-0"><?php esc_html_e( 'AI Provider Settings', 'zencoupon-ai-assistant' ); ?></p>
+                                    <div>
+                                        <p class="text-muted text-uppercase small fw-semibold mb-1"><?php esc_html_e( 'AI Integration', 'zencoupon-ai-assistant' ); ?></p>
+                                        <h2 class="h4 mb-0"><?php esc_html_e( 'Provider & Model', 'zencoupon-ai-assistant' ); ?></h2>
+                                    </div>
                                     <a class="btn btn-outline-secondary btn-sm" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-help' ) ); ?>"><?php esc_html_e( 'Docs & Support', 'zencoupon-ai-assistant' ); ?></a>
                                 </div>
+
                                 <form method="post" action="options.php">
                                     <?php settings_fields( 'zencoupon_ai_assistant_settings' ); ?>
                                     <div class="mb-3">
@@ -386,7 +456,7 @@ class ZenCoupon_AI_Assistant_Admin {
                                             <div class="mb-3">
                                                 <label class="form-label small text-muted" for="<?php echo esc_attr( $api_key_name ); ?>"><?php echo esc_html( $provider_label ); ?> <?php esc_html_e( 'API Key', 'zencoupon-ai-assistant' ); ?></label>
                                                 <div class="input-group">
-                                                    <input type="password" id="<?php echo esc_attr( $api_key_name ); ?>" name="<?php echo esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ); ?>[<?php echo esc_attr( $api_key_name ); ?>]" value="<?php echo esc_attr( $api_value ); ?>" class="form-control zencoupon-api-key-field" autocomplete="off" />
+                                                    <input type="password" id="<?php echo esc_attr( $api_key_name ); ?>" name="<?php echo esc_attr( ZenCoupon_AI_Assistant_Main::OPTION_KEY ); ?>[<?php echo esc_attr( $api_key_name ); ?>]" value="<?php echo esc_attr( '' !== $api_value ? self::API_KEY_MASK : '' ); ?>" class="form-control zencoupon-api-key-field" autocomplete="off" />
                                                     <button type="button" class="btn btn-outline-secondary zencoupon-toggle-api-key" data-field="<?php echo esc_attr( $api_key_name ); ?>"><?php esc_html_e( 'Show', 'zencoupon-ai-assistant' ); ?></button>
                                                 </div>
                                             </div>
@@ -411,14 +481,12 @@ class ZenCoupon_AI_Assistant_Admin {
                                     </div>
                                 </form>
 
-                                <?php
-                                if ( empty( $active_api_key ) ) :
-                                ?>
+                                <?php if ( empty( $active_api_key ) ) : ?>
                                     <div class="alert alert-info mt-3" role="alert">
                                         <?php
                                         printf(
                                             /* translators: %s is the selected provider label. */
-                                            esc_html__( 'No API key saved for %s. The API key is required before commands can be processed.', 'zencoupon-ai-assistant' ),
+                                            esc_html__( 'No API key saved for %s. The API key is required before AI features can be processed.', 'zencoupon-ai-assistant' ),
                                             esc_html( $provider_labels[ $ai_provider ] )
                                         );
                                         ?>
@@ -426,12 +494,284 @@ class ZenCoupon_AI_Assistant_Admin {
                                 <?php endif; ?>
                             </div>
                         </div>
+                    </div>
 
+                    <div class="col-lg-4">
                         <div class="card shadow-sm">
                             <div class="card-body">
-                                <p class="text-muted text-uppercase small fw-semibold mb-3"><?php esc_html_e( 'Recent Activity', 'zencoupon-ai-assistant' ); ?></p>
-                                <div id="zencoupon-recent-activity">
-                                    <?php $this->render_recent_activity( $recent_activity ); ?>
+                                <p class="text-muted text-uppercase small fw-semibold mb-2"><?php esc_html_e( 'Settings Modules', 'zencoupon-ai-assistant' ); ?></p>
+                                <p class="text-muted mb-0"><?php esc_html_e( 'More plugin settings can be added here later without crowding the coupon generator page.', 'zencoupon-ai-assistant' ); ?></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Renders the Woo Automation settings page.
+     */
+    public function render_woo_automation_page(): void {
+        if ( ! $this->current_user_can_manage_coupons() ) {
+            wp_die( esc_html__( 'Unauthorized', 'zencoupon-ai-assistant' ) );
+        }
+
+        $definitions      = ZenCoupon_AI_Assistant_Woo_Automation::get_automation_definitions();
+        $settings_updated = isset( $_GET['settings-updated'] ) ? sanitize_text_field( wp_unslash( $_GET['settings-updated'] ) ) : '';
+        $option_key       = ZenCoupon_AI_Assistant_Main::OPTION_KEY;
+        $recent_events    = ZenCoupon_AI_Assistant_Woo_Automation::get_recent_events( 8 );
+        ?>
+        <div class="wrap">
+            <div class="container-fluid px-0">
+                <div class="d-flex flex-column flex-md-row align-items-start justify-content-between mb-4">
+                    <div>
+                        <h1 class="h3 mb-1"><?php esc_html_e( 'Woo Automation', 'zencoupon-ai-assistant' ); ?></h1>
+                        <p class="text-muted mb-0"><?php esc_html_e( 'Run coupon emails from saved WooCommerce triggers. No live AI request runs inside checkout, cart, or order hooks.', 'zencoupon-ai-assistant' ); ?></p>
+                    </div>
+                    <a class="btn btn-outline-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG ) ); ?>"><?php esc_html_e( 'Back to Console', 'zencoupon-ai-assistant' ); ?></a>
+                </div>
+
+                <?php if ( 'true' === $settings_updated ) : ?>
+                    <div class="alert alert-success zencoupon-alert" role="alert">
+                        <?php esc_html_e( 'Woo Automation settings saved successfully.', 'zencoupon-ai-assistant' ); ?>
+                        <button type="button" class="zencoupon-close-button" aria-label="<?php esc_attr_e( 'Close', 'zencoupon-ai-assistant' ); ?>">&times;</button>
+                    </div>
+                <?php endif; ?>
+
+                <div class="card shadow-sm zencoupon-automation-card">
+                    <div class="card-body">
+                        <div class="zencoupon-automation-layout">
+                            <nav class="zencoupon-automation-nav" aria-label="<?php esc_attr_e( 'Woo automation campaigns', 'zencoupon-ai-assistant' ); ?>">
+                                <?php $index = 0; ?>
+                                <?php foreach ( $definitions as $automation_key => $definition ) : ?>
+                                    <?php $automation = ZenCoupon_AI_Assistant_Woo_Automation::get_automation_settings( $automation_key ); ?>
+                                    <button type="button" class="zencoupon-automation-nav-item <?php echo 0 === $index ? 'active' : ''; ?>" data-zencoupon-target="#zencoupon-automation-<?php echo esc_attr( $automation_key ); ?>" aria-selected="<?php echo 0 === $index ? 'true' : 'false'; ?>">
+                                        <span><?php echo esc_html( $definition['label'] ); ?></span>
+                                        <small><?php echo 'yes' === ( $automation['enabled'] ?? 'no' ) ? esc_html__( 'Enabled', 'zencoupon-ai-assistant' ) : esc_html__( 'Disabled', 'zencoupon-ai-assistant' ); ?></small>
+                                    </button>
+                                    <?php $index++; ?>
+                                <?php endforeach; ?>
+                                <button type="button" class="zencoupon-automation-nav-item disabled" disabled>
+                                    <span><?php esc_html_e( 'Abandoned Cart', 'zencoupon-ai-assistant' ); ?></span>
+                                    <small><?php esc_html_e( 'Coming soon', 'zencoupon-ai-assistant' ); ?></small>
+                                </button>
+                            </nav>
+
+                            <div class="zencoupon-automation-content">
+                                <form method="post" action="options.php">
+                                    <?php settings_fields( 'zencoupon_ai_assistant_settings' ); ?>
+                                    <?php $index = 0; ?>
+                                    <?php foreach ( $definitions as $automation_key => $definition ) : ?>
+                                        <?php $automation = ZenCoupon_AI_Assistant_Woo_Automation::get_automation_settings( $automation_key ); ?>
+                                        <?php $automation_prefix = $option_key . '[automations][' . $automation_key . ']'; ?>
+                                        <div class="tab-pane <?php echo 0 === $index ? 'active' : ''; ?>" id="zencoupon-automation-<?php echo esc_attr( $automation_key ); ?>" role="tabpanel">
+                                            <div class="zencoupon-automation-heading">
+                                                <div>
+                                                    <p class="text-muted text-uppercase small fw-semibold mb-1"><?php echo esc_html( $definition['label'] ); ?></p>
+                                                    <h2 class="h4 mb-1"><?php echo esc_html( $definition['title'] ); ?></h2>
+                                                    <p class="text-muted mb-0"><?php echo esc_html( $definition['description'] ); ?></p>
+                                                </div>
+                                                <span class="badge <?php echo 'yes' === ( $automation['enabled'] ?? 'no' ) ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'; ?>"><?php echo 'yes' === ( $automation['enabled'] ?? 'no' ) ? esc_html__( 'Enabled', 'zencoupon-ai-assistant' ) : esc_html__( 'Disabled', 'zencoupon-ai-assistant' ); ?></span>
+                                            </div>
+
+                                            <div class="zencoupon-automation-section">
+                                                <label class="d-flex align-items-center gap-2" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-enabled">
+                                                    <input type="checkbox" id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-enabled" name="<?php echo esc_attr( $automation_prefix ); ?>[enabled]" value="yes" <?php checked( $automation['enabled'], 'yes' ); ?> />
+                                                    <span><?php esc_html_e( 'Enable this automation', 'zencoupon-ai-assistant' ); ?></span>
+                                                </label>
+                                            </div>
+
+                                            <?php if ( ZenCoupon_AI_Assistant_Woo_Automation::AUTOMATION_ORDER_STATUS === $automation_key ) : ?>
+                                                <?php $status_rules = isset( $automation['status_rules'] ) && is_array( $automation['status_rules'] ) ? $automation['status_rules'] : array(); ?>
+                                                <div class="zencoupon-automation-section">
+                                                    <p class="text-muted text-uppercase small fw-semibold mb-3"><?php esc_html_e( 'Status Rules', 'zencoupon-ai-assistant' ); ?></p>
+                                                    <?php foreach ( $status_rules as $rule_key => $rule ) : ?>
+                                                        <?php $rule_prefix = $automation_prefix . '[status_rules][' . sanitize_key( $rule_key ) . ']'; ?>
+                                                        <details class="zencoupon-automation-accordion" <?php echo 'yes' === ( $rule['enabled'] ?? 'no' ) ? 'open' : ''; ?>>
+                                                            <summary><?php echo esc_html( ucwords( str_replace( '_', ' ', sanitize_key( $rule_key ) ) ) ); ?> <?php esc_html_e( 'rule', 'zencoupon-ai-assistant' ); ?></summary>
+                                                            <div class="zencoupon-automation-accordion-body">
+                                                                <div class="row g-3">
+                                                                    <div class="col-12">
+                                                                        <label class="d-flex align-items-center gap-2" for="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-enabled">
+                                                                            <input type="checkbox" id="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-enabled" name="<?php echo esc_attr( $rule_prefix ); ?>[enabled]" value="yes" <?php checked( $rule['enabled'], 'yes' ); ?> />
+                                                                            <span><?php esc_html_e( 'Enable this status rule', 'zencoupon-ai-assistant' ); ?></span>
+                                                                        </label>
+                                                                    </div>
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-status"><?php esc_html_e( 'When order becomes', 'zencoupon-ai-assistant' ); ?></label>
+                                                                        <select id="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-status" name="<?php echo esc_attr( $rule_prefix ); ?>[trigger_status]" class="form-select">
+                                                                            <?php foreach ( ZenCoupon_AI_Assistant_Woo_Automation::get_order_status_options( false, false ) as $status_key => $status_label ) : ?>
+                                                                                <option value="<?php echo esc_attr( $status_key ); ?>" <?php selected( $rule['trigger_status'], $status_key ); ?>><?php echo esc_html( $status_label ); ?></option>
+                                                                            <?php endforeach; ?>
+                                                                        </select>
+                                                                    </div>
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-delay"><?php esc_html_e( 'Send after hours', 'zencoupon-ai-assistant' ); ?></label>
+                                                                        <input type="number" id="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-delay" name="<?php echo esc_attr( $rule_prefix ); ?>[delay_hours]" class="form-control" min="0" max="720" step="1" value="<?php echo esc_attr( $rule['delay_hours'] ?? '0' ); ?>" />
+                                                                    </div>
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-discount-type"><?php esc_html_e( 'Discount type', 'zencoupon-ai-assistant' ); ?></label>
+                                                                        <select id="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-discount-type" name="<?php echo esc_attr( $rule_prefix ); ?>[discount_type]" class="form-select">
+                                                                            <option value="percent" <?php selected( $rule['discount_type'], 'percent' ); ?>><?php esc_html_e( 'Percentage discount', 'zencoupon-ai-assistant' ); ?></option>
+                                                                            <option value="fixed_cart" <?php selected( $rule['discount_type'], 'fixed_cart' ); ?>><?php esc_html_e( 'Fixed cart discount', 'zencoupon-ai-assistant' ); ?></option>
+                                                                        </select>
+                                                                    </div>
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-discount-amount"><?php esc_html_e( 'Discount amount', 'zencoupon-ai-assistant' ); ?></label>
+                                                                        <input type="number" id="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-discount-amount" name="<?php echo esc_attr( $rule_prefix ); ?>[discount_amount]" class="form-control" min="0.01" step="0.01" value="<?php echo esc_attr( $rule['discount_amount'] ); ?>" />
+                                                                    </div>
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-expiry-days"><?php esc_html_e( 'Expiry days', 'zencoupon-ai-assistant' ); ?></label>
+                                                                        <input type="number" id="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-expiry-days" name="<?php echo esc_attr( $rule_prefix ); ?>[expiry_days]" class="form-control" min="1" step="1" value="<?php echo esc_attr( $rule['expiry_days'] ); ?>" />
+                                                                    </div>
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-coupon-prefix"><?php esc_html_e( 'Coupon code prefix', 'zencoupon-ai-assistant' ); ?></label>
+                                                                        <input type="text" id="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-coupon-prefix" name="<?php echo esc_attr( $rule_prefix ); ?>[coupon_prefix]" class="form-control" value="<?php echo esc_attr( $rule['coupon_prefix'] ); ?>" maxlength="24" />
+                                                                    </div>
+                                                                    <div class="col-12">
+                                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-email-subject"><?php esc_html_e( 'Email subject', 'zencoupon-ai-assistant' ); ?></label>
+                                                                        <input type="text" id="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-email-subject" name="<?php echo esc_attr( $rule_prefix ); ?>[email_subject]" class="form-control" value="<?php echo esc_attr( $rule['email_subject'] ); ?>" />
+                                                                    </div>
+                                                                    <div class="col-12">
+                                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-email-body"><?php esc_html_e( 'Email body', 'zencoupon-ai-assistant' ); ?></label>
+                                                                        <textarea id="zencoupon-<?php echo esc_attr( $automation_key . '-' . $rule_key ); ?>-email-body" name="<?php echo esc_attr( $rule_prefix ); ?>[email_body]" class="form-control" rows="7"><?php echo esc_textarea( $rule['email_body'] ); ?></textarea>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </details>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            <?php else : ?>
+                                            <div class="zencoupon-automation-section">
+                                                <p class="text-muted text-uppercase small fw-semibold mb-3"><?php esc_html_e( 'Trigger & Coupon Rules', 'zencoupon-ai-assistant' ); ?></p>
+                                                <div class="row g-3">
+                                                    <?php if ( ZenCoupon_AI_Assistant_Woo_Automation::AUTOMATION_ACCOUNT_CREATED !== $automation_key ) : ?>
+                                                        <?php
+                                                        $status_options = ZenCoupon_AI_Assistant_Woo_Automation::get_order_status_options(
+                                                            ZenCoupon_AI_Assistant_Woo_Automation::AUTOMATION_FIRST_ORDER === $automation_key,
+                                                            ZenCoupon_AI_Assistant_Woo_Automation::AUTOMATION_FIRST_ORDER !== $automation_key
+                                                        );
+                                                        ?>
+                                                        <div class="col-md-6">
+                                                            <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-trigger"><?php esc_html_e( 'Order status filter', 'zencoupon-ai-assistant' ); ?></label>
+                                                            <select id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-trigger" name="<?php echo esc_attr( $automation_prefix ); ?>[trigger_status]" class="form-select">
+                                                                <?php foreach ( $status_options as $status_key => $status_label ) : ?>
+                                                                    <option value="<?php echo esc_attr( $status_key ); ?>" <?php selected( $automation['trigger_status'], $status_key ); ?>><?php echo esc_html( $status_label ); ?></option>
+                                                                <?php endforeach; ?>
+                                                            </select>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-discount-type"><?php esc_html_e( 'Discount type', 'zencoupon-ai-assistant' ); ?></label>
+                                                        <select id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-discount-type" name="<?php echo esc_attr( $automation_prefix ); ?>[discount_type]" class="form-select">
+                                                            <option value="percent" <?php selected( $automation['discount_type'], 'percent' ); ?>><?php esc_html_e( 'Percentage discount', 'zencoupon-ai-assistant' ); ?></option>
+                                                            <option value="fixed_cart" <?php selected( $automation['discount_type'], 'fixed_cart' ); ?>><?php esc_html_e( 'Fixed cart discount', 'zencoupon-ai-assistant' ); ?></option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-discount-amount"><?php esc_html_e( 'Discount amount', 'zencoupon-ai-assistant' ); ?></label>
+                                                        <input type="number" id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-discount-amount" name="<?php echo esc_attr( $automation_prefix ); ?>[discount_amount]" class="form-control" min="0.01" step="0.01" value="<?php echo esc_attr( $automation['discount_amount'] ); ?>" />
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-expiry-days"><?php esc_html_e( 'Expiry days', 'zencoupon-ai-assistant' ); ?></label>
+                                                        <input type="number" id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-expiry-days" name="<?php echo esc_attr( $automation_prefix ); ?>[expiry_days]" class="form-control" min="1" step="1" value="<?php echo esc_attr( $automation['expiry_days'] ); ?>" />
+                                                    </div>
+                                                    <?php if ( ZenCoupon_AI_Assistant_Woo_Automation::AUTOMATION_ACCOUNT_CREATED !== $automation_key ) : ?>
+                                                        <div class="col-md-6">
+                                                            <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-delay-hours"><?php esc_html_e( 'Send after hours', 'zencoupon-ai-assistant' ); ?></label>
+                                                            <input type="number" id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-delay-hours" name="<?php echo esc_attr( $automation_prefix ); ?>[delay_hours]" class="form-control" min="0" max="720" step="1" value="<?php echo esc_attr( $automation['delay_hours'] ?? '0' ); ?>" />
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-usage-limit"><?php esc_html_e( 'Total usage limit', 'zencoupon-ai-assistant' ); ?></label>
+                                                        <input type="number" id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-usage-limit" name="<?php echo esc_attr( $automation_prefix ); ?>[usage_limit]" class="form-control" min="1" step="1" value="<?php echo esc_attr( $automation['usage_limit'] ); ?>" />
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-usage-limit-per-user"><?php esc_html_e( 'Usage limit per user', 'zencoupon-ai-assistant' ); ?></label>
+                                                        <input type="number" id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-usage-limit-per-user" name="<?php echo esc_attr( $automation_prefix ); ?>[usage_limit_per_user]" class="form-control" min="1" step="1" value="<?php echo esc_attr( $automation['usage_limit_per_user'] ); ?>" />
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-minimum-amount"><?php esc_html_e( 'Minimum spend', 'zencoupon-ai-assistant' ); ?></label>
+                                                        <input type="number" id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-minimum-amount" name="<?php echo esc_attr( $automation_prefix ); ?>[minimum_amount]" class="form-control" min="0" step="0.01" value="<?php echo esc_attr( $automation['minimum_amount'] ); ?>" />
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-coupon-prefix"><?php esc_html_e( 'Coupon code prefix', 'zencoupon-ai-assistant' ); ?></label>
+                                                        <input type="text" id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-coupon-prefix" name="<?php echo esc_attr( $automation_prefix ); ?>[coupon_prefix]" class="form-control" value="<?php echo esc_attr( $automation['coupon_prefix'] ); ?>" maxlength="24" />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="zencoupon-automation-section">
+                                                <p class="text-muted text-uppercase small fw-semibold mb-3"><?php esc_html_e( 'Email', 'zencoupon-ai-assistant' ); ?></p>
+                                                <div class="mb-3">
+                                                    <label class="form-label small text-muted" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-email-subject"><?php esc_html_e( 'Email subject', 'zencoupon-ai-assistant' ); ?></label>
+                                                    <input type="text" id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-email-subject" name="<?php echo esc_attr( $automation_prefix ); ?>[email_subject]" class="form-control" value="<?php echo esc_attr( $automation['email_subject'] ); ?>" />
+                                                </div>
+
+                                                <details class="zencoupon-automation-accordion" open>
+                                                    <summary><?php esc_html_e( 'Email Body', 'zencoupon-ai-assistant' ); ?></summary>
+                                                    <div class="zencoupon-automation-accordion-body">
+                                                        <label class="screen-reader-text" for="zencoupon-<?php echo esc_attr( $automation_key ); ?>-email-body"><?php esc_html_e( 'Email body', 'zencoupon-ai-assistant' ); ?></label>
+                                                        <textarea id="zencoupon-<?php echo esc_attr( $automation_key ); ?>-email-body" name="<?php echo esc_attr( $automation_prefix ); ?>[email_body]" class="form-control" rows="9"><?php echo esc_textarea( $automation['email_body'] ); ?></textarea>
+                                                    </div>
+                                                </details>
+
+                                                <details class="zencoupon-automation-accordion">
+                                                    <summary><?php esc_html_e( 'Placeholders', 'zencoupon-ai-assistant' ); ?></summary>
+                                                    <div class="zencoupon-automation-accordion-body">
+                                                        <div class="zencoupon-placeholder-chips">
+                                                            <code>{customer_name}</code>
+                                                            <code>{coupon_code}</code>
+                                                            <code>{discount}</code>
+                                                            <code>{expiry_date}</code>
+                                                            <code>{store_name}</code>
+                                                            <code>{order_id}</code>
+                                                            <code>{old_status}</code>
+                                                            <code>{new_status}</code>
+                                                        </div>
+                                                    </div>
+                                                </details>
+                                            </div>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php $index++; ?>
+                                    <?php endforeach; ?>
+
+                                    <div class="zencoupon-automation-actions">
+                                        <button type="submit" class="btn btn-primary"><?php esc_html_e( 'Save Woo Automation', 'zencoupon-ai-assistant' ); ?></button>
+                                    </div>
+                                </form>
+
+                                <div class="zencoupon-automation-section mt-4">
+                                    <p class="text-muted text-uppercase small fw-semibold mb-3"><?php esc_html_e( 'Recent Automation Events', 'zencoupon-ai-assistant' ); ?></p>
+                                    <?php if ( ! empty( $recent_events ) ) : ?>
+                                        <div class="table-responsive zc-table-wrap">
+                                            <table class="table table-sm mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th><?php esc_html_e( 'Time', 'zencoupon-ai-assistant' ); ?></th>
+                                                        <th><?php esc_html_e( 'Automation', 'zencoupon-ai-assistant' ); ?></th>
+                                                        <th><?php esc_html_e( 'Event', 'zencoupon-ai-assistant' ); ?></th>
+                                                        <th><?php esc_html_e( 'Reason', 'zencoupon-ai-assistant' ); ?></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <?php foreach ( $recent_events as $event ) : ?>
+                                                        <tr>
+                                                            <td><?php echo esc_html( $event['created_at'] ?? '' ); ?></td>
+                                                            <td><?php echo esc_html( $definitions[ $event['automation_key'] ]['label'] ?? $event['automation_key'] ?? '' ); ?></td>
+                                                            <td><?php echo esc_html( $event['event_type'] ?? '' ); ?></td>
+                                                            <td><?php echo esc_html( $event['reason'] ?? '' ); ?></td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    <?php else : ?>
+                                        <p class="text-muted mb-0"><?php esc_html_e( 'No automation events logged yet.', 'zencoupon-ai-assistant' ); ?></p>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -460,67 +800,141 @@ class ZenCoupon_AI_Assistant_Admin {
                     <a class="btn btn-outline-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG ) ); ?>"><?php esc_html_e( 'Back to Console', 'zencoupon-ai-assistant' ); ?></a>
                 </div>
 
-                <div class="row g-4 zencoupon-main-grid">
-                    <div class="col-lg-7">
-                        <div class="card shadow-sm mb-4">
-                            <div class="card-body">
-                                <p class="text-muted text-uppercase small fw-semibold mb-3"><?php esc_html_e( 'Quick Guide', 'zencoupon-ai-assistant' ); ?></p>
-                                <h2 class="h5"><?php esc_html_e( 'Provider setup', 'zencoupon-ai-assistant' ); ?></h2>
-                                <p><?php esc_html_e( 'Choose Groq, OpenAI/GPT, or Gemini from the provider settings, save the API key, choose a model, and run a test connection before generating live coupons.', 'zencoupon-ai-assistant' ); ?></p>
+                <div class="card shadow-sm zencoupon-docs-card">
+                    <div class="card-body">
+                        <div class="zencoupon-docs-layout">
+                            <nav class="zencoupon-docs-nav" aria-label="<?php esc_attr_e( 'Documentation sections', 'zencoupon-ai-assistant' ); ?>">
+                                <button type="button" class="zencoupon-docs-nav-item active" data-zencoupon-docs-target="#zencoupon-docs-started" aria-controls="zencoupon-docs-started" aria-selected="true"><?php esc_html_e( 'Getting Started', 'zencoupon-ai-assistant' ); ?></button>
+                                <button type="button" class="zencoupon-docs-nav-item" data-zencoupon-docs-target="#zencoupon-docs-providers" aria-controls="zencoupon-docs-providers" aria-selected="false"><?php esc_html_e( 'AI Providers', 'zencoupon-ai-assistant' ); ?></button>
+                                <button type="button" class="zencoupon-docs-nav-item" data-zencoupon-docs-target="#zencoupon-docs-commands" aria-controls="zencoupon-docs-commands" aria-selected="false"><?php esc_html_e( 'Coupon Commands', 'zencoupon-ai-assistant' ); ?></button>
+                                <button type="button" class="zencoupon-docs-nav-item" data-zencoupon-docs-target="#zencoupon-docs-automation" aria-controls="zencoupon-docs-automation" aria-selected="false"><?php esc_html_e( 'Woo Automation', 'zencoupon-ai-assistant' ); ?></button>
+                                <button type="button" class="zencoupon-docs-nav-item" data-zencoupon-docs-target="#zencoupon-docs-troubleshooting" aria-controls="zencoupon-docs-troubleshooting" aria-selected="false"><?php esc_html_e( 'Troubleshooting', 'zencoupon-ai-assistant' ); ?></button>
+                                <button type="button" class="zencoupon-docs-nav-item" data-zencoupon-docs-target="#zencoupon-docs-support" aria-controls="zencoupon-docs-support" aria-selected="false"><?php esc_html_e( 'Support', 'zencoupon-ai-assistant' ); ?></button>
+                            </nav>
 
-                                <h2 class="h5"><?php esc_html_e( 'Model guide', 'zencoupon-ai-assistant' ); ?></h2>
-                                <ul>
-                                    <li><?php esc_html_e( 'Groq is fast and useful for low-latency coupon commands.', 'zencoupon-ai-assistant' ); ?></li>
-                                    <li><?php esc_html_e( 'OpenAI/GPT default is gpt-5.5; gpt-5.4-mini and gpt-5.4-nano are lower-cost options.', 'zencoupon-ai-assistant' ); ?></li>
-                                    <li><?php esc_html_e( 'Gemini Flash models are useful for quick structured JSON output.', 'zencoupon-ai-assistant' ); ?></li>
-                                </ul>
+                            <div class="zencoupon-docs-content">
+                                <section id="zencoupon-docs-started" class="zencoupon-docs-section active" role="tabpanel">
+                                    <p class="text-muted text-uppercase small fw-semibold mb-2"><?php esc_html_e( 'Getting Started', 'zencoupon-ai-assistant' ); ?></p>
+                                    <h2 class="h4"><?php esc_html_e( 'Set up ZenCoupon AI', 'zencoupon-ai-assistant' ); ?></h2>
+                                    <ol>
+                                        <li><?php esc_html_e( 'Choose your AI provider from the ZenCoupon AI Settings page.', 'zencoupon-ai-assistant' ); ?></li>
+                                        <li><?php esc_html_e( 'Save the provider API key and model.', 'zencoupon-ai-assistant' ); ?></li>
+                                        <li><?php esc_html_e( 'Run Test Connection before generating live coupons.', 'zencoupon-ai-assistant' ); ?></li>
+                                        <li><?php esc_html_e( 'Use the Command Console or Woo Automation depending on your workflow.', 'zencoupon-ai-assistant' ); ?></li>
+                                    </ol>
+                                </section>
 
-                                <h2 class="h5"><?php esc_html_e( 'Prompt examples', 'zencoupon-ai-assistant' ); ?></h2>
-                                <ul>
-                                    <li><code>create coupon 15% discount</code></li>
-                                    <li><code>create coupon blackfriday 30% discount</code></li>
-                                    <li><code>Create a SAVE20 coupon with 20% off, free shipping, expires next month</code></li>
-                                </ul>
+                                <section id="zencoupon-docs-providers" class="zencoupon-docs-section" role="tabpanel">
+                                    <p class="text-muted text-uppercase small fw-semibold mb-2"><?php esc_html_e( 'AI Providers', 'zencoupon-ai-assistant' ); ?></p>
+                                    <h2 class="h4"><?php esc_html_e( 'Provider guide', 'zencoupon-ai-assistant' ); ?></h2>
+                                    <details class="zencoupon-docs-accordion" open>
+                                        <summary><?php esc_html_e( 'Model guide', 'zencoupon-ai-assistant' ); ?></summary>
+                                        <div class="zencoupon-docs-accordion-body">
+                                            <ul>
+                                                <li><?php esc_html_e( 'Groq is fast and useful for low-latency coupon commands.', 'zencoupon-ai-assistant' ); ?></li>
+                                                <li><?php esc_html_e( 'OpenAI/GPT is useful for high-quality structured coupon output.', 'zencoupon-ai-assistant' ); ?></li>
+                                                <li><?php esc_html_e( 'Gemini Flash models are useful for quick structured JSON output.', 'zencoupon-ai-assistant' ); ?></li>
+                                            </ul>
+                                        </div>
+                                    </details>
+                                    <details class="zencoupon-docs-accordion">
+                                        <summary><?php esc_html_e( 'Connection checklist', 'zencoupon-ai-assistant' ); ?></summary>
+                                        <div class="zencoupon-docs-accordion-body">
+                                            <ul>
+                                                <li><?php esc_html_e( 'Confirm the selected provider has a saved API key.', 'zencoupon-ai-assistant' ); ?></li>
+                                                <li><?php esc_html_e( 'Use a listed model unless you know the exact custom model ID.', 'zencoupon-ai-assistant' ); ?></li>
+                                                <li><?php esc_html_e( 'If a provider fails, save settings again and test the connection.', 'zencoupon-ai-assistant' ); ?></li>
+                                            </ul>
+                                        </div>
+                                    </details>
+                                </section>
 
-                                <h2 class="h5"><?php esc_html_e( 'Troubleshooting', 'zencoupon-ai-assistant' ); ?></h2>
-                                <ul>
-                                    <li><?php esc_html_e( 'If you see a missing API key error, save the selected provider key again.', 'zencoupon-ai-assistant' ); ?></li>
-                                    <li><?php esc_html_e( 'If a model error appears, choose a listed model or enter a valid custom model ID.', 'zencoupon-ai-assistant' ); ?></li>
-                                    <li><?php esc_html_e( 'If the AI returns invalid JSON, try the Polish Prompt button and run the command again.', 'zencoupon-ai-assistant' ); ?></li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
+                                <section id="zencoupon-docs-commands" class="zencoupon-docs-section" role="tabpanel">
+                                    <p class="text-muted text-uppercase small fw-semibold mb-2"><?php esc_html_e( 'Coupon Commands', 'zencoupon-ai-assistant' ); ?></p>
+                                    <h2 class="h4"><?php esc_html_e( 'Prompt examples', 'zencoupon-ai-assistant' ); ?></h2>
+                                    <div class="zencoupon-docs-code-list">
+                                        <code>create coupon 15% discount</code>
+                                        <code>create coupon blackfriday 30% discount</code>
+                                        <code>Create a SAVE20 coupon with 20% off, free shipping, expires next month</code>
+                                        <code>Update recent coupon to 20% discount</code>
+                                    </div>
+                                </section>
 
-                    <div class="col-lg-5">
-                        <div class="card shadow-sm">
-                            <div class="card-body">
-                                <p class="text-muted text-uppercase small fw-semibold mb-3"><?php esc_html_e( 'Support', 'zencoupon-ai-assistant' ); ?></p>
-                                <form id="zencoupon-support-form">
-                                    <?php wp_nonce_field( 'zencoupon_admin', 'zencoupon_support_nonce', true, false ); ?>
-                                    <div class="mb-3">
-                                        <label class="form-label small text-muted" for="zencoupon-support-email"><?php esc_html_e( 'Reply email', 'zencoupon-ai-assistant' ); ?></label>
-                                        <input type="email" id="zencoupon-support-email" name="reply_email" class="form-control" value="<?php echo esc_attr( $reply_email ); ?>" required />
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label small text-muted" for="zencoupon-support-cc"><?php esc_html_e( 'CC email', 'zencoupon-ai-assistant' ); ?></label>
-                                        <input type="email" id="zencoupon-support-cc" name="cc_email" class="form-control" />
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label small text-muted" for="zencoupon-support-subject"><?php esc_html_e( 'Subject', 'zencoupon-ai-assistant' ); ?></label>
-                                        <input type="text" id="zencoupon-support-subject" name="subject" class="form-control" required />
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label small text-muted" for="zencoupon-support-message"><?php esc_html_e( 'Message', 'zencoupon-ai-assistant' ); ?></label>
-                                        <textarea id="zencoupon-support-message" name="message" class="form-control" rows="7" required></textarea>
-                                    </div>
-                                    <p class="small text-muted mb-3">
-                                        <?php esc_html_e( 'If the form does not send, email support directly at', 'zencoupon-ai-assistant' ); ?>
-                                        <a href="mailto:tusherikbal20@gmail.com">tusherikbal20@gmail.com</a>.
-                                    </p>
-                                    <button type="submit" class="btn btn-primary"><?php esc_html_e( 'Send Support Request', 'zencoupon-ai-assistant' ); ?></button>
-                                    <div id="zencoupon-support-result" class="small text-muted mt-3"></div>
-                                </form>
+                                <section id="zencoupon-docs-automation" class="zencoupon-docs-section" role="tabpanel">
+                                    <p class="text-muted text-uppercase small fw-semibold mb-2"><?php esc_html_e( 'Woo Automation', 'zencoupon-ai-assistant' ); ?></p>
+                                    <h2 class="h4"><?php esc_html_e( 'First-order coupon automation', 'zencoupon-ai-assistant' ); ?></h2>
+                                    <p><?php esc_html_e( 'Woo Automation can send a unique coupon after a customer places their first successful order. Choose Processing or Completed as the trigger status, then configure the coupon and email copy.', 'zencoupon-ai-assistant' ); ?></p>
+                                    <details class="zencoupon-docs-accordion">
+                                        <summary><?php esc_html_e( 'Email placeholders', 'zencoupon-ai-assistant' ); ?></summary>
+                                        <div class="zencoupon-docs-accordion-body">
+                                            <div class="zencoupon-placeholder-chips">
+                                                <code>{customer_name}</code>
+                                                <code>{coupon_code}</code>
+                                                <code>{discount}</code>
+                                                <code>{expiry_date}</code>
+                                                <code>{store_name}</code>
+                                                <code>{order_id}</code>
+                                            </div>
+                                        </div>
+                                    </details>
+                                </section>
+
+                                <section id="zencoupon-docs-troubleshooting" class="zencoupon-docs-section" role="tabpanel">
+                                    <p class="text-muted text-uppercase small fw-semibold mb-2"><?php esc_html_e( 'Troubleshooting', 'zencoupon-ai-assistant' ); ?></p>
+                                    <h2 class="h4"><?php esc_html_e( 'Common fixes', 'zencoupon-ai-assistant' ); ?></h2>
+                                    <details class="zencoupon-docs-accordion" open>
+                                        <summary><?php esc_html_e( 'AI command issues', 'zencoupon-ai-assistant' ); ?></summary>
+                                        <div class="zencoupon-docs-accordion-body">
+                                            <ul>
+                                                <li><?php esc_html_e( 'If you see a missing API key error, save the selected provider key again.', 'zencoupon-ai-assistant' ); ?></li>
+                                                <li><?php esc_html_e( 'If a model error appears, choose a listed model or enter a valid custom model ID.', 'zencoupon-ai-assistant' ); ?></li>
+                                                <li><?php esc_html_e( 'If the AI returns invalid JSON, try the Polish Prompt button and run the command again.', 'zencoupon-ai-assistant' ); ?></li>
+                                            </ul>
+                                        </div>
+                                    </details>
+                                    <details class="zencoupon-docs-accordion">
+                                        <summary><?php esc_html_e( 'Automation email issues', 'zencoupon-ai-assistant' ); ?></summary>
+                                        <div class="zencoupon-docs-accordion-body">
+                                            <ul>
+                                                <li><?php esc_html_e( 'Confirm Woo Automation is enabled and saved.', 'zencoupon-ai-assistant' ); ?></li>
+                                                <li><?php esc_html_e( 'Confirm the order reached the selected trigger status.', 'zencoupon-ai-assistant' ); ?></li>
+                                                <li><?php esc_html_e( 'If mail is not delivered, check WordPress mail or SMTP configuration.', 'zencoupon-ai-assistant' ); ?></li>
+                                            </ul>
+                                        </div>
+                                    </details>
+                                </section>
+
+                                <section id="zencoupon-docs-support" class="zencoupon-docs-section" role="tabpanel">
+                                    <p class="text-muted text-uppercase small fw-semibold mb-2"><?php esc_html_e( 'Support', 'zencoupon-ai-assistant' ); ?></p>
+                                    <h2 class="h4"><?php esc_html_e( 'Send a support request', 'zencoupon-ai-assistant' ); ?></h2>
+                                    <form id="zencoupon-support-form">
+                                        <?php wp_nonce_field( 'zencoupon_admin', 'zencoupon_support_nonce', true, false ); ?>
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label small text-muted" for="zencoupon-support-email"><?php esc_html_e( 'Reply email', 'zencoupon-ai-assistant' ); ?></label>
+                                                <input type="email" id="zencoupon-support-email" name="reply_email" class="form-control" value="<?php echo esc_attr( $reply_email ); ?>" required />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small text-muted" for="zencoupon-support-cc"><?php esc_html_e( 'CC email', 'zencoupon-ai-assistant' ); ?></label>
+                                                <input type="email" id="zencoupon-support-cc" name="cc_email" class="form-control" />
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label small text-muted" for="zencoupon-support-subject"><?php esc_html_e( 'Subject', 'zencoupon-ai-assistant' ); ?></label>
+                                            <input type="text" id="zencoupon-support-subject" name="subject" class="form-control" required />
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label small text-muted" for="zencoupon-support-message"><?php esc_html_e( 'Message', 'zencoupon-ai-assistant' ); ?></label>
+                                            <textarea id="zencoupon-support-message" name="message" class="form-control" rows="7" required></textarea>
+                                        </div>
+                                        <p class="small text-muted mb-3">
+                                            <?php esc_html_e( 'If the form does not send, email support directly at', 'zencoupon-ai-assistant' ); ?>
+                                            <a href="mailto:tusherikbal20@gmail.com">tusherikbal20@gmail.com</a>.
+                                        </p>
+                                        <button type="submit" class="btn btn-primary"><?php esc_html_e( 'Send Support Request', 'zencoupon-ai-assistant' ); ?></button>
+                                        <div id="zencoupon-support-result" class="small text-muted mt-3"></div>
+                                    </form>
+                                </section>
                             </div>
                         </div>
                     </div>
@@ -785,7 +1199,7 @@ class ZenCoupon_AI_Assistant_Admin {
         }
 
         $bridge    = new ZenCoupon_AI_Assistant_Bridge();
-        $tool_call = $bridge->call_ai( $command );
+        $tool_call = $bridge->call_coupon_generator( $command );
 
         if ( is_wp_error( $tool_call ) ) {
             wp_send_json_error( array( 'message' => $tool_call->get_error_message() ), 500 );
@@ -918,7 +1332,9 @@ class ZenCoupon_AI_Assistant_Admin {
         $current         = is_array( $current ) ? $current : array();
         $provider_labels = ZenCoupon_AI_Assistant_Bridge::get_provider_labels();
 
-        $submitted_provider = isset( $input['ai_provider'] ) ? sanitize_text_field( $input['ai_provider'] ) : 'groq';
+        $submitted_provider = isset( $input['ai_provider'] )
+            ? sanitize_text_field( $input['ai_provider'] )
+            : ( isset( $current['ai_provider'] ) ? sanitize_text_field( $current['ai_provider'] ) : 'groq' );
         $output['ai_provider'] = isset( $provider_labels[ $submitted_provider ] ) ? $submitted_provider : 'groq';
 
         foreach ( array_keys( $provider_labels ) as $provider ) {
@@ -928,11 +1344,13 @@ class ZenCoupon_AI_Assistant_Admin {
             $existing_key  = isset( $current[ $api_key_name ] ) ? sanitize_text_field( $current[ $api_key_name ] ) : '';
             $submitted_key = isset( $input[ $api_key_name ] ) ? sanitize_text_field( $input[ $api_key_name ] ) : '';
 
-            $output[ $api_key_name ] = ( '********' === $submitted_key || '' === $submitted_key )
+            $output[ $api_key_name ] = ( self::API_KEY_MASK === $submitted_key || '' === $submitted_key )
                 ? $existing_key
                 : $submitted_key;
 
-            $submitted_model = isset( $input[ $model_name ] ) ? sanitize_text_field( $input[ $model_name ] ) : '';
+            $submitted_model = isset( $input[ $model_name ] )
+                ? sanitize_text_field( $input[ $model_name ] )
+                : ( isset( $current[ $model_name ] ) ? sanitize_text_field( $current[ $model_name ] ) : '' );
             if ( 'groq' === $provider && 'llama3-8b-8192' === $submitted_model ) {
                 $submitted_model = 'llama-3.1-8b-instant';
             }
@@ -941,6 +1359,13 @@ class ZenCoupon_AI_Assistant_Admin {
                 ? $submitted_model
                 : ZenCoupon_AI_Assistant_Bridge::get_default_model_for_provider( $provider );
         }
+
+        $current_automations = isset( $current['automations'] ) && is_array( $current['automations'] ) ? $current['automations'] : array();
+        $input_automations   = isset( $input['automations'] ) && is_array( $input['automations'] ) ? $input['automations'] : $current_automations;
+        $output['automations'] = ZenCoupon_AI_Assistant_Woo_Automation::sanitize_automations(
+            $input_automations,
+            $current_automations
+        );
 
         return $output;
     }

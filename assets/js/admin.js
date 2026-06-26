@@ -17,6 +17,7 @@
     function initZenCoupon() {
         // Tab navigation
         initTabs();
+        initDocsTabs();
         
         // Buttons
         initButtons();
@@ -29,6 +30,37 @@
         
         // Scroll handling
         initScrollFix();
+    }
+
+    /**
+     * Initialize Docs & Support page section navigation.
+     */
+    function initDocsTabs() {
+        const docButtons = document.querySelectorAll('[data-zencoupon-docs-target]');
+        if (!docButtons.length) return;
+
+        docButtons.forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+
+                const targetId = this.getAttribute('data-zencoupon-docs-target');
+                const targetPane = document.querySelector(targetId);
+                if (!targetPane) return;
+
+                document.querySelectorAll('.zencoupon-docs-section').forEach(section => {
+                    section.classList.remove('active');
+                });
+
+                document.querySelectorAll('[data-zencoupon-docs-target]').forEach(navItem => {
+                    navItem.classList.remove('active');
+                    navItem.setAttribute('aria-selected', 'false');
+                });
+
+                targetPane.classList.add('active');
+                this.classList.add('active');
+                this.setAttribute('aria-selected', 'true');
+            });
+        });
     }
 
     /**
@@ -51,8 +83,8 @@
                     pane.classList.remove('active');
                 });
                 
-                // Deactivate all buttons
-                document.querySelectorAll('.nav-link').forEach(btn => {
+                // Deactivate all tab buttons
+                document.querySelectorAll('.nav-link, .zencoupon-automation-nav-item:not(.disabled)').forEach(btn => {
                     btn.classList.remove('active');
                     btn.setAttribute('aria-selected', 'false');
                 });

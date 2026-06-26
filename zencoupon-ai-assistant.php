@@ -40,7 +40,7 @@ add_action( 'before_woocommerce_init', function () {
  */
 final class ZenCoupon_AI_Assistant_Main {
 
-    public const VERSION        = '1.0.1';
+    public const VERSION        = '1.0.2';
     public const PLUGIN_SLUG    = 'zencoupon-ai-assistant';
     public const OPTION_KEY     = 'zencoupon_ai_assistant_settings';
     public const TEXT_DOMAIN    = 'zencoupon-ai-assistant';
@@ -125,6 +125,7 @@ final class ZenCoupon_AI_Assistant_Main {
     private function includes(): void {
 
         require_once ZENCOUPON_AI_ASSISTANT_DIR . 'includes/class-zencoupon-actions.php';
+        require_once ZENCOUPON_AI_ASSISTANT_DIR . 'includes/class-zencoupon-woo-automation.php';
         require_once ZENCOUPON_AI_ASSISTANT_DIR . 'includes/class-zencoupon-mcp.php';
         require_once ZENCOUPON_AI_ASSISTANT_DIR . 'includes/class-zencoupon-ai-bridge.php';
         require_once ZENCOUPON_AI_ASSISTANT_DIR . 'includes/class-zencoupon-admin.php';
@@ -136,6 +137,7 @@ final class ZenCoupon_AI_Assistant_Main {
     public function init(): void {
 
         new ZenCoupon_AI_Assistant_MCP();
+        new ZenCoupon_AI_Assistant_Woo_Automation();
 
         if ( is_admin() ) {
             new ZenCoupon_AI_Assistant_Admin();
@@ -209,6 +211,20 @@ function zencoupon_ai_assistant_activate(): void {
         'openai_model_name' => 'gpt-5.5',
         'gemini_api_key'    => '',
         'gemini_model_name' => 'gemini-2.5-flash',
+        'automations'       => array(
+            'first_order_coupon' => array(
+                'enabled'              => 'no',
+                'trigger_status'       => 'completed',
+                'discount_type'        => 'percent',
+                'discount_amount'      => '10',
+                'expiry_days'          => '30',
+                'usage_limit'          => '1',
+                'usage_limit_per_user' => '1',
+                'minimum_amount'       => '',
+                'email_subject'        => __( 'Thanks for your first order! Here is your coupon', 'zencoupon-ai-assistant' ),
+                'email_body'           => "Hi {customer_name},\n\nThanks for your first order at {store_name}.\n\nUse coupon code {coupon_code} to get {discount} on your next order.\n\nThis coupon expires on {expiry_date}.\n\nThanks,\n{store_name}",
+            ),
+        ),
     );
 
     /**
@@ -243,6 +259,10 @@ function zencoupon_ai_assistant_deactivate(): void {
 
     delete_transient(
         'zencoupon_ai_assistant_stats'
+    );
+
+    delete_option(
+        'zencoupon_ai_assistant_automation_events'
     );
 }
 

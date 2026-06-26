@@ -33,7 +33,7 @@ class ZenCoupon_AI_Assistant_MCP {
         $body = $request->get_json_params();
 
         if ( empty( $body ) || ! is_array( $body ) ) {
-            return rest_ensure_response( $this->error_response( null, -32700, 'Invalid JSON-RPC body.' ) );
+            return rest_ensure_response( $this->error_response( null, -32700, __( 'Invalid JSON-RPC body.', 'zencoupon-ai-assistant' ) ) );
         }
 
         $id = $body['id'] ?? null;
@@ -42,11 +42,11 @@ class ZenCoupon_AI_Assistant_MCP {
         $params = $body['params'] ?? array();
 
         if ( '2.0' !== $jsonrpc ) {
-            return rest_ensure_response( $this->error_response( $id, -32600, 'Invalid JSON-RPC version.' ) );
+            return rest_ensure_response( $this->error_response( $id, -32600, __( 'Invalid JSON-RPC version.', 'zencoupon-ai-assistant' ) ) );
         }
 
         if ( empty( $method ) ) {
-            return rest_ensure_response( $this->error_response( $id, -32600, 'Method is required.' ) );
+            return rest_ensure_response( $this->error_response( $id, -32600, __( 'Method is required.', 'zencoupon-ai-assistant' ) ) );
         }
 
         $result = $this->process_method( $method, $params );
@@ -60,7 +60,7 @@ class ZenCoupon_AI_Assistant_MCP {
 
     public function execute_tool_call( array $tool_call ) {
         if ( empty( $tool_call['name'] ) || ! is_string( $tool_call['name'] ) ) {
-            return new WP_Error( 'invalid_tool_call', 'Tool call name is required.' );
+            return new WP_Error( 'invalid_tool_call', __( 'Tool call name is required.', 'zencoupon-ai-assistant' ) );
         }
 
         $method = sanitize_text_field( $tool_call['name'] );
@@ -90,7 +90,7 @@ class ZenCoupon_AI_Assistant_MCP {
             case 'delete_coupon':
                 return $actions->delete_coupon( $params['coupon_id'] ?? $params['id'] ?? 0 );
             default:
-                return new WP_Error( 'method_not_found', sprintf( 'Unknown tool: %s', esc_html( $method ) ) );
+                return new WP_Error( 'method_not_found', sprintf( /* translators: %s is the requested tool/method name. */ __( 'Unknown tool: %s', 'zencoupon-ai-assistant' ), esc_html( $method ) ) );
         }
     }
 

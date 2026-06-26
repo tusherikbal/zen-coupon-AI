@@ -489,11 +489,257 @@ label {
     background: #f8fafc;
 }
 
+.zencoupon-automation-card {
+    width: 100%;
+    max-width: none;
+    margin-top: 0;
+}
+
+.zencoupon-automation-layout {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 24px;
+}
+
+.zencoupon-automation-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 18px;
+    border-right: 1px solid #e5e7eb;
+}
+
+.zencoupon-automation-nav-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    padding: 12px 14px;
+    border: 1px solid #d2d6dc;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #1f2937;
+    text-align: left;
+}
+
+.zencoupon-automation-nav-item.active {
+    border-color: #0073aa;
+    background: #eef6ff;
+    color: #005f8d;
+}
+
+.zencoupon-automation-nav-item.disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.zencoupon-automation-nav-item span {
+    font-weight: 600;
+}
+
+.zencoupon-automation-nav-item small {
+    color: #6b7280;
+}
+
+.zencoupon-automation-content {
+    min-width: 0;
+}
+
+.zencoupon-automation-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 18px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.zencoupon-automation-section {
+    padding-bottom: 18px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.zencoupon-automation-accordion {
+    border: 1px solid #d2d6dc;
+    border-radius: 8px;
+    background: #ffffff;
+    margin-bottom: 10px;
+}
+
+.zencoupon-automation-accordion summary {
+    padding: 12px 14px;
+    font-weight: 600;
+    color: #1f2937;
+    cursor: pointer;
+    list-style-position: inside;
+}
+
+.zencoupon-automation-accordion[open] summary {
+    border-bottom: 1px solid #e5e7eb;
+    background: #f8fafc;
+}
+
+.zencoupon-automation-accordion-body {
+    padding: 14px;
+}
+
+.zencoupon-placeholder-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.zencoupon-placeholder-chips code {
+    display: inline-flex;
+    padding: 5px 8px;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #1f2937;
+}
+
+.zencoupon-email-sample {
+    margin: 0;
+    white-space: pre-wrap;
+    color: #1f2937;
+}
+
+.zencoupon-automation-actions {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.zencoupon-pro-badge {
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.zencoupon-docs-card {
+    width: 100%;
+    max-width: none;
+    margin-top: 0;
+}
+
+.zencoupon-docs-layout {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 24px;
+}
+
+.zencoupon-docs-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 18px;
+    border-right: 1px solid #e5e7eb;
+}
+
+.zencoupon-docs-nav-item {
+    display: block;
+    padding: 12px 14px;
+    border: 1px solid #d2d6dc;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #1f2937;
+    text-decoration: none;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.zencoupon-docs-nav-item:hover,
+.zencoupon-docs-nav-item.active {
+    border-color: #0073aa;
+    background: #eef6ff;
+    color: #005f8d;
+}
+
+.zencoupon-docs-content {
+    min-width: 0;
+}
+
+.zencoupon-docs-section {
+    display: none;
+    scroll-margin-top: 32px;
+    padding-bottom: 24px;
+    margin-bottom: 24px;
+}
+
+.zencoupon-docs-section.active {
+    display: block;
+}
+
+.zencoupon-docs-accordion {
+    border: 1px solid #d2d6dc;
+    border-radius: 8px;
+    background: #ffffff;
+    margin-bottom: 10px;
+}
+
+.zencoupon-docs-accordion summary {
+    padding: 12px 14px;
+    font-weight: 600;
+    color: #1f2937;
+    cursor: pointer;
+    list-style-position: inside;
+}
+
+.zencoupon-docs-accordion[open] summary {
+    border-bottom: 1px solid #e5e7eb;
+    background: #f8fafc;
+}
+
+.zencoupon-docs-accordion-body {
+    padding: 14px;
+}
+
+.zencoupon-docs-code-list {
+    display: grid;
+    gap: 8px;
+}
+
+.zencoupon-docs-code-list code {
+    display: block;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #1f2937;
+    white-space: normal;
+}
+
 @media (max-width: 767px) {
     .col-md-6,
     .col-md-4,
     .col-lg-7,
     .col-lg-5 {
         width: 100%;
+    }
+
+    .zencoupon-automation-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .zencoupon-automation-nav {
+        padding-right: 0;
+        padding-bottom: 16px;
+        border-right: none;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .zencoupon-automation-heading {
+        flex-direction: column;
+    }
+
+    .zencoupon-docs-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .zencoupon-docs-nav {
+        padding-right: 0;
+        padding-bottom: 16px;
+        border-right: none;
+        border-bottom: 1px solid #e5e7eb;
     }
 }
