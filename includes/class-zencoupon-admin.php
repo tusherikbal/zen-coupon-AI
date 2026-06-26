@@ -122,6 +122,36 @@ class ZenCoupon_AI_Assistant_Admin {
         ) );
     }
 
+    /**
+     * Renders the shared in-plugin top navigation bar.
+     *
+     * Mirrors the WordPress submenu items so users can switch between plugin
+     * pages without leaving the plugin content area.
+     *
+     * @param string $current_slug The page slug currently being viewed.
+     */
+    private function render_top_nav( string $current_slug ): void {
+        $items = array(
+            ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG                     => __( 'Coupon Generator', 'zencoupon-ai-assistant' ),
+            ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-woo-automation' => __( 'Woo Automation', 'zencoupon-ai-assistant' ),
+            ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-settings'       => __( 'Settings', 'zencoupon-ai-assistant' ),
+            ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-help'           => __( 'Docs & Support', 'zencoupon-ai-assistant' ),
+        );
+        ?>
+        <nav class="zencoupon-topnav" aria-label="<?php esc_attr_e( 'ZenCoupon navigation', 'zencoupon-ai-assistant' ); ?>">
+            <div class="zencoupon-topnav-brand">
+                <span class="dashicons dashicons-smartphone" aria-hidden="true"></span>
+                <span><?php esc_html_e( 'ZenCoupon AI', 'zencoupon-ai-assistant' ); ?></span>
+            </div>
+            <div class="zencoupon-topnav-links">
+                <?php foreach ( $items as $slug => $label ) : ?>
+                    <a class="zencoupon-topnav-link <?php echo $current_slug === $slug ? 'active' : ''; ?>" href="<?php echo esc_url( admin_url( 'admin.php?page=' . $slug ) ); ?>"<?php echo $current_slug === $slug ? ' aria-current="page"' : ''; ?>><?php echo esc_html( $label ); ?></a>
+                <?php endforeach; ?>
+            </div>
+        </nav>
+        <?php
+    }
+
     public function render_admin_page(): void {
         // FIX: Uses the unified method – consistent with menu registration.
         if ( ! $this->current_user_can_manage_coupons() ) {
@@ -196,12 +226,12 @@ class ZenCoupon_AI_Assistant_Admin {
         ?>
         <div class="wrap">
             <div class="container-fluid px-0">
-                <div class="d-flex flex-column flex-md-row align-items-start justify-content-between mb-4">
+                <?php $this->render_top_nav( ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG ); ?>
+                <div class="zencoupon-page-header d-flex flex-column flex-md-row align-items-start justify-content-between">
                     <div>
                         <h1 class="h3 mb-1"><?php esc_html_e( 'ZenCoupon AI Assistant', 'zencoupon-ai-assistant' ); ?></h1>
                         <span class="badge bg-secondary">v<?php echo esc_html( ZenCoupon_AI_Assistant_Main::VERSION ); ?></span>
                     </div>
-                    <a class="btn btn-outline-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-settings' ) ); ?>"><?php esc_html_e( 'Settings', 'zencoupon-ai-assistant' ); ?></a>
                 </div>
 
                 <div class="row g-3 mb-4">
@@ -403,12 +433,12 @@ class ZenCoupon_AI_Assistant_Admin {
         ?>
         <div class="wrap">
             <div class="container-fluid px-0">
-                <div class="d-flex flex-column flex-md-row align-items-start justify-content-between mb-4">
+                <?php $this->render_top_nav( ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-settings' ); ?>
+                <div class="zencoupon-page-header d-flex flex-column flex-md-row align-items-start justify-content-between">
                     <div>
                         <h1 class="h3 mb-1"><?php esc_html_e( 'Settings', 'zencoupon-ai-assistant' ); ?></h1>
                         <p class="text-muted mb-0"><?php esc_html_e( 'Manage shared ZenCoupon settings used by the coupon generator, campaign builder, and automation modules.', 'zencoupon-ai-assistant' ); ?></p>
                     </div>
-                    <a class="btn btn-outline-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG ) ); ?>"><?php esc_html_e( 'Back to Coupon Generator', 'zencoupon-ai-assistant' ); ?></a>
                 </div>
 
                 <?php if ( 'true' === $settings_updated ) : ?>
@@ -525,12 +555,12 @@ class ZenCoupon_AI_Assistant_Admin {
         ?>
         <div class="wrap">
             <div class="container-fluid px-0">
-                <div class="d-flex flex-column flex-md-row align-items-start justify-content-between mb-4">
+                <?php $this->render_top_nav( ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-woo-automation' ); ?>
+                <div class="zencoupon-page-header d-flex flex-column flex-md-row align-items-start justify-content-between">
                     <div>
                         <h1 class="h3 mb-1"><?php esc_html_e( 'Woo Automation', 'zencoupon-ai-assistant' ); ?></h1>
                         <p class="text-muted mb-0"><?php esc_html_e( 'Run coupon emails from saved WooCommerce triggers. No live AI request runs inside checkout, cart, or order hooks.', 'zencoupon-ai-assistant' ); ?></p>
                     </div>
-                    <a class="btn btn-outline-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG ) ); ?>"><?php esc_html_e( 'Back to Console', 'zencoupon-ai-assistant' ); ?></a>
                 </div>
 
                 <?php if ( 'true' === $settings_updated ) : ?>
@@ -792,12 +822,12 @@ class ZenCoupon_AI_Assistant_Admin {
         ?>
         <div class="wrap">
             <div class="container-fluid px-0">
-                <div class="d-flex flex-column flex-md-row align-items-start justify-content-between mb-4">
+                <?php $this->render_top_nav( ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG . '-help' ); ?>
+                <div class="zencoupon-page-header d-flex flex-column flex-md-row align-items-start justify-content-between">
                     <div>
                         <h1 class="h3 mb-1"><?php esc_html_e( 'ZenCoupon Docs & Support', 'zencoupon-ai-assistant' ); ?></h1>
                         <p class="text-muted mb-0"><?php esc_html_e( 'Provider setup, prompt examples, troubleshooting, and direct support.', 'zencoupon-ai-assistant' ); ?></p>
                     </div>
-                    <a class="btn btn-outline-secondary" href="<?php echo esc_url( admin_url( 'admin.php?page=' . ZenCoupon_AI_Assistant_Main::PLUGIN_SLUG ) ); ?>"><?php esc_html_e( 'Back to Console', 'zencoupon-ai-assistant' ); ?></a>
                 </div>
 
                 <div class="card shadow-sm zencoupon-docs-card">
