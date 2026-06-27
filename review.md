@@ -124,6 +124,27 @@ Planned improvements:
 - Scheduled campaign execution
 - Campaign performance tracking
 
+
+
+## AI Campaign Builder Summary and Future Plan
+
+*
+AI Campaign Builder is a functional beta feature of ZenCoupon AI Assistant. It allows WooCommerce store owners to turn a simple campaign idea into an AI-generated promotional campaign draft. The feature can generate campaign name, customer segment, discount type, discount amount, coupon expiry, usage limits, email subject, email body, and social post copy.
+
+The current workflow starts with a natural-language campaign idea. AI creates the campaign draft, then the admin reviews the campaign details, selects or confirms the WooCommerce customer segment, previews the target customers, removes customers manually if needed, sends a test email, and starts the campaign. After launch, the plugin creates customer-specific unique WooCommerce coupons and sends emails in background batches using WP-Cron.
+
+Current supported customer segments include win-back or inactive customers, category buyers, product buyers, product-tag buyers, registered users who never ordered, and all previous customers. Campaigns also support admin test email, start, pause, resume, running/completed status, sent count tracking, email-restricted coupons, batch delivery of 25 customers per batch, 60-second batch gap, and a maximum of 2,000 recipients per campaign.
+
+AI is used only for campaign draft generation. Customer data is not sent to the AI provider, and campaign email delivery does not require any AI call. This keeps the campaign flow safer and more privacy-friendly.
+
+Future improvements will focus on making the Campaign Builder more production-ready, scalable, and user-friendly. Planned improvements include dedicated campaign and recipient database tables, better HPOS-compatible segmentation queries, improved large-store performance, email failure tracking, retry logic, orphan coupon cleanup, unsubscribe support, marketing consent handling, suppression list support, scheduled campaign start time, timezone support, campaign cancel/delete/archive actions, and advanced delivery reports.
+
+Future versions may also include a step-by-step campaign creation wizard, ready-made campaign templates, clearer delivery progress, coupon redemption tracking, revenue impact reports, campaign performance dashboard, click/recovery tracking, and smarter AI recommendations based on store history and customer behavior.
+
+The long-term goal is to make AI Campaign Builder a complete WooCommerce coupon campaign assistant where store owners can create, review, test, launch, and track targeted promotional campaigns without manually exporting customers, writing emails, or creating coupons one by one.
+```*
+
+
 ### 2. Front-End Coupon Experience
 
 Planned improvements:
