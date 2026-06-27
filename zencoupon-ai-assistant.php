@@ -128,6 +128,7 @@ final class ZenCoupon_AI_Assistant_Main {
         require_once ZENCOUPON_AI_ASSISTANT_DIR . 'includes/class-zencoupon-woo-automation.php';
         require_once ZENCOUPON_AI_ASSISTANT_DIR . 'includes/class-zencoupon-mcp.php';
         require_once ZENCOUPON_AI_ASSISTANT_DIR . 'includes/class-zencoupon-ai-bridge.php';
+        require_once ZENCOUPON_AI_ASSISTANT_DIR . 'includes/class-zencoupon-campaign-builder.php';
         require_once ZENCOUPON_AI_ASSISTANT_DIR . 'includes/class-zencoupon-admin.php';
     }
 
@@ -138,6 +139,7 @@ final class ZenCoupon_AI_Assistant_Main {
 
         new ZenCoupon_AI_Assistant_MCP();
         new ZenCoupon_AI_Assistant_Woo_Automation();
+        new ZenCoupon_AI_Assistant_Campaign_Builder();
 
         if ( is_admin() ) {
             new ZenCoupon_AI_Assistant_Admin();
@@ -264,6 +266,14 @@ function zencoupon_ai_assistant_deactivate(): void {
     delete_option(
         'zencoupon_ai_assistant_automation_events'
     );
+
+    // Clear the recurring abandoned-cart processing event so it does not
+    // linger in WP-Cron after the plugin is switched off.
+    $abandoned_cart_cron = wp_next_scheduled( 'zencoupon_ai_assistant_check_abandoned_carts' );
+    if ( false !== $abandoned_cart_cron ) {
+        wp_unschedule_event( $abandoned_cart_cron, 'zencoupon_ai_assistant_check_abandoned_carts' );
+    }
+    wp_clear_scheduled_hook( 'zencoupon_ai_assistant_check_abandoned_carts' );
 }
 
 /**
@@ -275,9 +285,23 @@ function zencoupon_ai_assistant_uninstall(): void {
         ZenCoupon_AI_Assistant_Main::OPTION_KEY
     );
 
+    delete_option(
+        'zencoupon_ai_assistant_automation_events'
+    );
+
+    delete_option(
+        'zencoupon_ai_assistant_abandoned_carts'
+    );
+
+    delete_option(
+        'zencoupon_ai_assistant_campaigns'
+    );
+
     delete_transient(
         'zencoupon_ai_assistant_stats'
     );
+
+    wp_clear_scheduled_hook( 'zencoupon_ai_assistant_check_abandoned_carts' );
 }
 
 /**

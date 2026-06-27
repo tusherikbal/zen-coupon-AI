@@ -94,6 +94,63 @@
     margin-top: 2px;
 }
 
+.zencoupon-audience-list {
+    max-height: 360px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.zencoupon-audience-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.zencoupon-audience-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.zencoupon-audience-name {
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.zencoupon-audience-email {
+    font-size: 12px;
+    color: #6b7280;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.zencoupon-audience-remove {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    line-height: 1;
+    border: 1px solid #f5c2c7;
+    border-radius: 50%;
+    background: #fff1f2;
+    color: #b91c1c;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.zencoupon-audience-remove:hover {
+    background: #fee2e2;
+    border-color: #ef4444;
+}
+
 .row {
     display: flex;
     flex-wrap: wrap;

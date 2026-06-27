@@ -350,25 +350,52 @@ class ZenCoupon_AI_Assistant_Bridge {
     }
 
     private function parse_plain_json( string $text ) {
-        $decoded = json_decode( $this->clean_ai_response( $text ), true );
+        $cleaned = $this->clean_ai_response( $text );
+        $decoded = json_decode( $cleaned, true );
+
+        // If JSON parsing failed and response looks incomplete, try to repair it
+        if ( ! is_array( $decoded ) && strpos( $cleaned, '{' ) === 0 ) {
+            $repaired = $this->repair_incomplete_json( $cleaned );
+            $decoded  = json_decode( $repaired, true );
+        }
 
         if ( ! is_array( $decoded ) ) {
-            return new WP_Error( 'invalid_json_response', __( 'Invalid AI JSON response.', 'zencoupon-ai-assistant' ) );
+            $error_msg = sprintf(
+                __( 'Invalid AI JSON response. Raw: %s', 'zencoupon-ai-assistant' ),
+                substr( $cleaned, 0, 150 )
+            );
+            return new WP_Error( 'invalid_json_response', $error_msg );
         }
 
         return $decoded;
     }
 
-    private function clean_ai_response( string $response ): string {
-        $response = trim( $response );
-        $response = preg_replace( '/^```(?:json)?\s*/i', '', $response );
-        $response = preg_replace( '/\s*```$/', '', $response );
+    private function repair_incomplete_json( string $json ): string {
+        $open_braces  = substr_count( $json, '{' );
+        $close_braces = substr_count( $json, '}' );
 
-        if ( preg_match( '/\{(?:[^{}]|(?R))*\}/s', $response, $matches ) ) {
-            return trim( $matches[0] );
+        // Close unclosed string at end if needed
+        if ( substr( $json, -1 ) !== '"' && substr( $json, -1 ) !== '}' ) {
+            $json .= '"';
         }
 
-        return $response;
+        // Add missing closing braces
+        while ( $close_braces < $open_braces ) {
+            $json .= '}';
+            $close_braces++;
+        }
+
+        return $json;
+    }
+
+    private function clean_ai_response( string $response ): string {
+        $response = trim( $response );
+
+        // Strip markdown code blocks
+        $response = preg_replace( '/^```(?:json)?\s*/i', '', $response );
+        $response = preg_replace( '/\s*```\s*$/i', '', $response );
+
+        return trim( $response );
     }
 
     private function api_error_from_response( $data, int $status_code, string $provider ) {
@@ -493,12 +520,11 @@ class ZenCoupon_AI_Assistant_Bridge {
     }
 
     private function get_campaign_builder_system_prompt(): string {
-        return 'You are a WooCommerce coupon campaign planning assistant for ZenCoupon AI. '
-            . 'Return ONLY valid JSON. Do not use markdown. Do not explain anything. '
-            . 'Create campaign drafts only; never claim that a live automation has been activated. '
-            . 'The JSON must include: campaign_name string, campaign_type string, campaign_goal string, coupon_rule object, target_customer_segment string, trigger_suggestion string, email_subject string, email_body string, popup_text string, social_post_copy string, expiry_date string, usage_limits object, utm_tracking object, conditions object, actions object. '
-            . 'Supported campaign types are first_order_coupon, abandoned_cart_recovery, win_back_inactive_customer, birthday_anniversary_coupon, product_category_campaign, cross_sell_campaign, vip_customer_campaign, seasonal_campaign, and manual_campaign. '
-            . 'Keep actions coupon-focused: generate_coupon, send_coupon_email, auto_apply_coupon, show_coupon_popup, restore_abandoned_cart, log_analytics_event. '
-            . 'Do not include customer personal data. Do not require live AI calls during cart, checkout, order, or automation hooks.';
+        return 'Output ONLY JSON. No markdown. Keep concise. '
+            . 'Fields: campaign_name, discount_type, discount_amount, expiry_days, usage_limit, usage_limit_per_user, email_subject, email_body, social_post_copy, segment_type, segment_params. '
+            . 'discount_type: "percent" or "fixed_cart". segment_type MUST be: "winback", "category", "product", "tag", "never_ordered", or "all_customers". '
+            . 'If the idea doesn\'t clearly fit a segment type, use "winback" (inactive customers). '
+            . 'segment_params: {"days":60} for winback, {} for others. email_body short with {customer_name} {coupon_code} {discount}. '
+            . 'Example: {"campaign_name":"Sale","discount_type":"percent","discount_amount":10,"expiry_days":30,"usage_limit":1,"usage_limit_per_user":1,"email_subject":"Offer","email_body":"Hi {customer_name}, {coupon_code}","social_post_copy":"Limited","segment_type":"winback","segment_params":{"days":60}}';
     }
 }

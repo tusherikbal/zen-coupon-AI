@@ -27,9 +27,414 @@
         
         // Dynamic content
         initDynamicContent();
-        
+
+        // AI Campaign Builder
+        initCampaignBuilder();
+
         // Scroll handling
         initScrollFix();
+    }
+
+    /**
+     * Initialize AI Campaign Builder interactions.
+     */
+    // Emails the admin removed from the audience before starting the campaign.
+    let campaignExcludedEmails = [];
+
+    function initCampaignBuilder() {
+        const generateBtn = document.getElementById('zencoupon-generate-campaign');
+        const startBtn = document.getElementById('zencoupon-start-campaign');
+        const testBtn = document.getElementById('zencoupon-send-test-email');
+        const segmentSelect = document.getElementById('zencoupon-segment-type-select');
+        const regenerateBtn = document.getElementById('zencoupon-regenerate-recipients');
+
+        if (generateBtn) {
+            generateBtn.addEventListener('click', generateCampaignDraft);
+        }
+        if (startBtn) {
+            startBtn.addEventListener('click', startCampaign);
+        }
+        if (testBtn) {
+            testBtn.addEventListener('click', sendTestEmail);
+        }
+        if (segmentSelect) {
+            segmentSelect.addEventListener('change', function() {
+                const selectEl = document.getElementById('zencoupon-segment-type');
+                if (selectEl) selectEl.value = this.value;
+            });
+        }
+        if (regenerateBtn) {
+            regenerateBtn.addEventListener('click', regenerateRecipients);
+        }
+
+        document.querySelectorAll('.zencoupon-toggle-campaign').forEach(btn => {
+            btn.addEventListener('click', toggleCampaign);
+        });
+    }
+
+    async function generateCampaignDraft(e) {
+        e.preventDefault();
+
+        const ideaEl = document.getElementById('zencoupon-campaign-idea');
+        const statusEl = document.getElementById('zencoupon-campaign-status');
+        const button = document.getElementById('zencoupon-generate-campaign');
+        if (!ideaEl || !button) return;
+
+        const idea = ideaEl.value.trim();
+        if (!idea) {
+            if (statusEl) {
+                statusEl.textContent = 'Please describe the campaign idea.';
+                statusEl.className = 'small text-danger';
+            }
+            return;
+        }
+
+        button.disabled = true;
+        if (statusEl) {
+            statusEl.textContent = 'Generating draft...';
+            statusEl.className = 'small text-muted';
+        }
+
+        try {
+            const data = new FormData();
+            data.append('action', 'zencoupon_ai_assistant_generate_campaign');
+            data.append('nonce', ZenCouponAIAssistantData.nonce);
+            data.append('idea', idea);
+
+            const response = await fetch(ZenCouponAIAssistantData.ajax_url, { method: 'POST', body: data });
+            const result = await response.json();
+
+            if (!result.success) {
+                if (statusEl) {
+                    statusEl.textContent = result.data?.message || 'Could not generate draft.';
+                    statusEl.className = 'small text-danger';
+                }
+                return;
+            }
+
+            populateCampaignDraft(result.data);
+            if (statusEl) {
+                statusEl.textContent = 'Draft ready. Review and start below.';
+                statusEl.className = 'small text-success';
+            }
+        } catch (error) {
+            if (statusEl) {
+                statusEl.textContent = 'Error: ' + error.message;
+                statusEl.className = 'small text-danger';
+            }
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    function populateCampaignDraft(data) {
+        const draft = data.draft || {};
+        const wrapper = document.getElementById('zencoupon-campaign-draft');
+        if (!wrapper) return;
+
+        setValue('zencoupon-draft-name', draft.name);
+        setValue('zencoupon-draft-discount-type', draft.discount_type);
+        setValue('zencoupon-draft-discount-amount', draft.discount_amount);
+        setValue('zencoupon-draft-expiry', draft.expiry_days);
+        setValue('zencoupon-draft-usage', draft.usage_limit);
+        setValue('zencoupon-draft-usage-user', draft.usage_limit_per_user);
+        setValue('zencoupon-draft-subject', draft.email_subject);
+        setValue('zencoupon-draft-body', draft.email_body);
+        setValue('zencoupon-draft-social', draft.social_copy);
+
+        // Display segment detection UI
+        const segmentType = data.segment_type || 'winback';
+        const segmentParams = data.segment_params || {};
+        const segmentLabel = data.draft?.segment_label || 'Customers';
+        renderSegmentDetection(segmentType, segmentParams, segmentLabel);
+
+        campaignExcludedEmails = [];
+        renderAudiencePanel(data.recipients || [], data.total != null ? data.total : 0);
+
+        wrapper.style.display = 'block';
+        wrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function renderSegmentDetection(segmentType, segmentParams, segmentLabel) {
+        const card = document.getElementById('zencoupon-segment-detection');
+        const typeInput = document.getElementById('zencoupon-segment-type');
+        const typeSelect = document.getElementById('zencoupon-segment-type-select');
+        const paramsContainer = document.getElementById('zencoupon-segment-params-inputs');
+        const labelEl = document.getElementById('zencoupon-segment-label');
+
+        if (typeInput) typeInput.value = segmentType;
+        if (typeSelect) typeSelect.value = segmentType;
+        if (labelEl) labelEl.textContent = segmentLabel;
+
+        // Populate hidden params
+        if (paramsContainer) {
+            paramsContainer.innerHTML = '';
+            Object.entries(segmentParams).forEach(([key, val]) => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = `segment_params[${key}]`;
+                input.value = val;
+                paramsContainer.appendChild(input);
+            });
+        }
+
+        if (card) card.style.display = 'block';
+    }
+
+    function renderAudiencePanel(recipients, total) {
+        const card = document.getElementById('zencoupon-audience-card');
+        const list = document.getElementById('zencoupon-audience-list');
+        const countEl = document.getElementById('zencoupon-campaign-count');
+        if (!card || !list) return;
+
+        list.innerHTML = '';
+
+        if (!recipients.length) {
+            list.innerHTML = '<p class="small text-muted mb-0">No customers matched this segment.</p>';
+        }
+
+        recipients.forEach(recipient => {
+            const row = document.createElement('div');
+            row.className = 'zencoupon-audience-row';
+            row.setAttribute('data-email', recipient.email);
+
+            const info = document.createElement('div');
+            info.className = 'zencoupon-audience-info';
+            const name = document.createElement('span');
+            name.className = 'zencoupon-audience-name';
+            name.textContent = recipient.name || 'Customer';
+            const email = document.createElement('span');
+            email.className = 'zencoupon-audience-email';
+            email.textContent = recipient.email;
+            info.appendChild(name);
+            info.appendChild(email);
+
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'zencoupon-audience-remove';
+            remove.setAttribute('aria-label', 'Remove customer');
+            remove.textContent = '×';
+            remove.addEventListener('click', function() {
+                campaignExcludedEmails.push(recipient.email);
+                row.remove();
+                updateAudienceCount(-1);
+            });
+
+            row.appendChild(info);
+            row.appendChild(remove);
+            list.appendChild(row);
+        });
+
+        if (countEl) countEl.textContent = total;
+        card.dataset.total = total;
+        card.style.display = 'block';
+    }
+
+    function updateAudienceCount(delta) {
+        const countEl = document.getElementById('zencoupon-campaign-count');
+        const card = document.getElementById('zencoupon-audience-card');
+        if (!countEl || !card) return;
+        const next = Math.max(0, parseInt(card.dataset.total || '0', 10) + delta);
+        card.dataset.total = next;
+        countEl.textContent = next;
+    }
+
+    async function toggleCampaign(e) {
+        e.preventDefault();
+        const button = e.currentTarget;
+        const campaignId = button.getAttribute('data-campaign-id');
+        if (!campaignId) return;
+
+        button.disabled = true;
+        try {
+            const data = new FormData();
+            data.append('action', 'zencoupon_ai_assistant_toggle_campaign');
+            data.append('nonce', ZenCouponAIAssistantData.nonce);
+            data.append('campaign_id', campaignId);
+
+            const response = await fetch(ZenCouponAIAssistantData.ajax_url, { method: 'POST', body: data });
+            const result = await response.json();
+
+            if (result.success) {
+                const status = result.data.status;
+                button.textContent = status === 'running' ? 'Pause' : 'Resume';
+                const row = button.closest('tr');
+                const badge = row ? row.querySelector('.zencoupon-campaign-status-badge') : null;
+                if (badge) {
+                    badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+                    badge.className = 'badge zencoupon-campaign-status-badge ' + (status === 'paused' ? 'bg-secondary-subtle text-secondary' : 'bg-primary-subtle text-primary');
+                }
+                showAlert(result.data.message || 'Campaign updated.', 'success');
+            } else {
+                showAlert(result.data?.message || 'Could not update campaign.', 'danger');
+            }
+        } catch (error) {
+            showAlert('Error: ' + error.message, 'danger');
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    function setValue(id, value) {
+        const el = document.getElementById(id);
+        if (el && value != null) el.value = value;
+    }
+
+    async function startCampaign(e) {
+        e.preventDefault();
+
+        const button = document.getElementById('zencoupon-start-campaign');
+        const statusEl = document.getElementById('zencoupon-start-status');
+        if (!button) return;
+
+        if (!confirm('Start this campaign and begin sending emails to the targeted customers?')) {
+            return;
+        }
+
+        button.disabled = true;
+        if (statusEl) {
+            statusEl.textContent = 'Starting campaign...';
+            statusEl.className = 'small text-muted';
+        }
+
+        try {
+            const data = new FormData();
+            data.append('action', 'zencoupon_ai_assistant_start_campaign');
+            data.append('nonce', ZenCouponAIAssistantData.nonce);
+
+            const segmentTypeEl = document.getElementById('zencoupon-segment-type');
+            if (segmentTypeEl) data.append('segment_type', segmentTypeEl.value);
+
+            document.querySelectorAll('#zencoupon-segment-params-inputs input').forEach(input => {
+                data.append(input.name, input.value);
+            });
+            campaignExcludedEmails.forEach(email => data.append('excluded_emails[]', email));
+            ['name', 'discount_type', 'discount_amount', 'expiry_days', 'usage_limit', 'usage_limit_per_user', 'email_subject', 'email_body', 'social_copy'].forEach(field => {
+                const el = document.querySelector(`#zencoupon-campaign-review [name="${field}"]`);
+                if (el) data.append(field, el.value);
+            });
+
+            const response = await fetch(ZenCouponAIAssistantData.ajax_url, { method: 'POST', body: data });
+            const result = await response.json();
+
+            if (statusEl) {
+                statusEl.textContent = result.data?.message || (result.success ? 'Campaign started.' : 'Could not start campaign.');
+                statusEl.className = result.success ? 'small text-success' : 'small text-danger';
+            }
+
+            if (result.success) {
+                showAlert(result.data?.message || 'Campaign started.', 'success');
+                setTimeout(() => window.location.reload(), 1500);
+            }
+        } catch (error) {
+            if (statusEl) {
+                statusEl.textContent = 'Error: ' + error.message;
+                statusEl.className = 'small text-danger';
+            }
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    async function sendTestEmail(e) {
+        e.preventDefault();
+
+        const button = document.getElementById('zencoupon-send-test-email');
+        const emailInput = document.getElementById('zencoupon-test-email');
+        const statusEl = document.getElementById('zencoupon-test-email-status');
+        if (!button || !emailInput) return;
+
+        const testEmail = emailInput.value.trim();
+        if (!testEmail) {
+            if (statusEl) {
+                statusEl.textContent = 'Please enter an email address.';
+                statusEl.className = 'text-danger';
+            }
+            return;
+        }
+
+        button.disabled = true;
+        if (statusEl) {
+            statusEl.textContent = 'Sending test email...';
+            statusEl.className = 'text-muted';
+        }
+
+        try {
+            const data = new FormData();
+            data.append('action', 'zencoupon_ai_assistant_send_test_email');
+            data.append('nonce', ZenCouponAIAssistantData.nonce);
+            data.append('test_email', testEmail);
+            ['email_subject', 'email_body', 'discount_type', 'discount_amount', 'expiry_days'].forEach(field => {
+                const el = document.querySelector(`#zencoupon-campaign-review [name="${field}"]`);
+                if (el) data.append(field, el.value);
+            });
+
+            const response = await fetch(ZenCouponAIAssistantData.ajax_url, { method: 'POST', body: data });
+            const result = await response.json();
+
+            if (statusEl) {
+                statusEl.textContent = result.data?.message || (result.success ? 'Test email sent.' : 'Could not send test email.');
+                statusEl.className = result.success ? 'text-success' : 'text-danger';
+            }
+        } catch (error) {
+            if (statusEl) {
+                statusEl.textContent = 'Error: ' + error.message;
+                statusEl.className = 'text-danger';
+            }
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    async function regenerateRecipients(e) {
+        e.preventDefault();
+
+        const button = document.getElementById('zencoupon-regenerate-recipients');
+        const statusEl = document.getElementById('zencoupon-regenerate-status');
+        const segmentSelect = document.getElementById('zencoupon-segment-type-select');
+        if (!button || !segmentSelect) return;
+
+        button.disabled = true;
+        if (statusEl) {
+            statusEl.textContent = 'Regenerating...';
+            statusEl.className = 'text-muted';
+        }
+
+        try {
+            const data = new FormData();
+            data.append('action', 'zencoupon_ai_assistant_regenerate_recipients');
+            data.append('nonce', ZenCouponAIAssistantData.nonce);
+            data.append('segment_type', segmentSelect.value);
+
+            // Collect segment_params from hidden inputs
+            document.querySelectorAll('#zencoupon-segment-params-inputs input').forEach(input => {
+                data.append(input.name, input.value);
+            });
+
+            const response = await fetch(ZenCouponAIAssistantData.ajax_url, { method: 'POST', body: data });
+            const result = await response.json();
+
+            if (result.success) {
+                if (statusEl) {
+                    statusEl.textContent = 'Updated: ' + result.data.total + ' customers';
+                    statusEl.className = 'text-success';
+                }
+                renderAudiencePanel(result.data.recipients || [], result.data.total || 0);
+                campaignExcludedEmails = [];
+            } else {
+                if (statusEl) {
+                    statusEl.textContent = result.data?.message || 'Could not regenerate recipients.';
+                    statusEl.className = 'text-danger';
+                }
+            }
+        } catch (error) {
+            if (statusEl) {
+                statusEl.textContent = 'Error: ' + error.message;
+                statusEl.className = 'text-danger';
+            }
+        } finally {
+            button.disabled = false;
+        }
     }
 
     /**

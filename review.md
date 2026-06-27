@@ -2,105 +2,188 @@
 
 ## Plugin Overview
 
-**ZenCoupon AI Assistant** is a WordPress and WooCommerce plugin that helps store owners create, update, and manage coupons using AI-powered natural language commands. Instead of manually configuring every WooCommerce coupon field, users can type a simple instruction such as "Create a 20% coupon for Eid sale with minimum spend 1000", and the plugin converts that command into WooCommerce-ready coupon data.
+ZenCoupon AI Assistant is a WordPress and WooCommerce plugin focused on AI-assisted coupon creation, coupon management, WooCommerce automation, and lightweight campaign marketing workflows. The plugin is currently positioned as a hybrid tool for store owners who want to generate coupons from natural language prompts and automate post-purchase or customer lifecycle marketing actions.
 
-## Short Marketing Copy
+## Current Product Positioning
 
-ZenCoupon AI Assistant helps WooCommerce store owners create and manage coupons using simple AI-powered commands. Choose Groq, OpenAI/GPT, or Google Gemini, write what kind of discount you want, and let the plugin generate WooCommerce-ready coupons with limits, expiry dates, free shipping, category rules, and more.
+The plugin is no longer only a coupon generator. It currently combines three main areas:
 
-## Built With
+- AI-powered coupon generation and editing
+- WooCommerce automation for coupon-triggered customer emails
+- Campaign builder workflows for segmentation and outreach
 
-- WordPress plugin architecture
-- PHP 7.4+
-- WooCommerce coupon API / `WC_Coupon`
-- WordPress Admin Menu and Settings API
-- WordPress AJAX API
-- WordPress REST API
-- JSON-RPC 2.0 style MCP endpoint
-- Plain JavaScript, no React/Vue/build system
-- Plain CSS with custom utility classes
-- External AI APIs:
-  - Groq
-  - OpenAI/GPT
-  - Google Gemini
+## Current Implementation Status
 
-## Main Features
+Plugin version: 1.0.2
 
-- Natural language coupon creation
-- Existing coupon update/edit support
-- AI provider switch: Groq, OpenAI/GPT, Gemini
-- Model dropdown with custom model fallback
-- API key save option
-- Test Connection button
-- Local Polish Prompt button
-- Generated coupon list
-- Recent activity panel
-- Coupon delete action
-- Coupon rules overview
-- Docs & Support admin page
-- Support form via `wp_mail()`
-- WooCommerce HPOS compatibility
-- REST/MCP endpoint for external integration
+The current codebase already includes a substantial feature set and several admin workflows that are ready for use in a WordPress/WooCommerce environment.
 
-## Coupon Functionality
+## Implemented Features
 
-The plugin can handle these WooCommerce coupon options:
+### 1. AI Coupon Generator
 
-- Coupon code
+This is the core feature and it is already implemented.
+
+What it does:
+- Accepts natural language commands to create or update WooCommerce coupons
+- Supports coupon code, amount, discount type, expiry date, minimum/maximum spend, usage limits, and customer restrictions
+- Supports product/category targeting and exclusion rules
+- Supports individual use, free shipping, and exclusion of sale items
+- Can create and update coupons from the admin dashboard
+- Can list generated coupons and delete them from the admin UI
+
+### 2. Multi-Provider AI Support
+
+The plugin supports multiple AI providers from the admin settings:
+- Groq
+- OpenAI / GPT
+- Google Gemini
+
+Additional capabilities:
+- Provider switching from one place
+- Model selection per provider
+- Custom model fallback support
+- Connection testing for the selected AI provider
+
+### 3. Admin Dashboard and Coupon Console
+
+The admin area includes a polished in-plugin experience:
+- Dashboard stats: active coupons, expiring soon, highest discount
+- Command console for AI prompts
+- Suggested prompts
+- Polish Prompt helper
+- Coupon Rules tab
+- Generated Coupons tab
+- Settings page
+- Docs & Support page
+- Recent activity display
+
+### 4. Coupon Management Features
+
+The plugin can work with standard WooCommerce coupon settings, including:
 - Percentage discount
 - Fixed cart discount
 - Fixed product discount
 - Expiry date
-- Minimum spend
-- Maximum spend
-- Usage limit
-- Usage limit per user
-- Individual use only
-- Free shipping
-- Exclude sale items
+- Minimum and maximum spend
+- Usage limits
+- Usage limits per user
+- Product/category restrictions
 - Email restrictions
-- Product IDs
-- Excluded product IDs
-- Product categories
-- Excluded product categories
+- Excluded sale items
+- Free shipping
 
-## AI Provider System
+### 5. WooCommerce Automation Engine
 
-The plugin supports three AI providers:
+The plugin already includes a WooCommerce automation framework with several live automation types:
+- First order coupon email
+- Account created coupon email
+- New order coupon email
+- Order status-based coupon email
+- Thank-you coupon email
+- Abandoned cart recovery coupon email
 
-- **Groq**: useful for fast responses and low-latency coupon commands.
-- **OpenAI/GPT**: useful for high-quality structured output.
-- **Google Gemini**: useful for fast structured JSON responses.
+These automations use WooCommerce hooks, scheduled events, and coupon generation logic to send follow-up coupon offers based on customer behavior.
 
-Users can select the provider, save the API key, choose a curated model, or enter a custom model name from the admin panel. Only the selected provider's settings are shown, keeping the UI clean.
+### 6. Campaign Builder
 
+The plugin also includes an AI campaign builder module with:
+- Campaign draft generation
+- Customer segmentation support
+- Recipient list generation for different audience types
+- Win-back campaign logic
+- Category, product, tag, and never-ordered customer segments
+- Batch-style campaign processing support
+- Email template handling
 
-## Admin UI Features
+### 7. Integration Layer
 
-- Dashboard stats:
-  - Active coupons
-  - Expiring soon
-  - Highest discount
-- Command Console
-- Suggested prompts
-- Polish Prompt
-- Coupon Rules tab
-- Generated Coupons tab
-- AI Provider Settings
-- Recent Activity
-- Docs & Support page
+The plugin includes integration endpoints for external usage:
+- WordPress REST API endpoint
+- JSON-RPC style MCP-compatible endpoint
+- Support form via WordPress mail functions
+- WooCommerce HPOS compatibility
 
+## Strengths of the Current Plugin
 
-## Use Cases
+- Strong core coupon utility for WooCommerce stores
+- Flexible AI provider selection
+- Useful admin UX for non-technical store owners
+- Good base for AI-driven promotions and automation
+- Extensible architecture with separate modules for actions, automation, MCP, campaign builder, and admin UI
 
-- Store owners can quickly create sale coupons.
-- Marketing teams can generate campaign coupons.
-- Seasonal campaigns such as Black Friday, Eid, Summer Sale, or New Year can be launched faster.
-- Customer-specific coupons can be created with email restrictions.
-- Category-specific discount campaigns can be created.
-- Free shipping campaigns can be set up quickly.
-- Limited usage promo codes can be generated.
+## Upcoming / Planned Features
 
+These are the most logical next steps for the plugin roadmap and should be clearly separated from the currently implemented features in the new readme.
 
-## Features
+### 1. Advanced Campaign Automation
 
+Planned improvements:
+- Full campaign launch and send workflow
+- More polished campaign approval flow
+- Scheduled campaign execution
+- Campaign performance tracking
+
+### 2. Front-End Coupon Experience
+
+Planned improvements:
+- Auto-apply coupons at cart or checkout
+- Popup-based coupon offers
+- Front-end coupon display widgets
+- Smart coupon suggestion UI
+
+### 3. Better Analytics and Reporting
+
+Planned improvements:
+- Redemption tracking
+- Conversion reporting per coupon
+- Campaign performance dashboards
+- Revenue impact reporting
+
+### 4. Smarter AI Recommendations
+
+Planned improvements:
+- AI-generated coupon recommendations based on store history
+- Seasonal promotion suggestions
+- Customer segment-based promotional strategies
+- Recommended discount values and rules
+
+### 5. Expanded Integrations
+
+Planned improvements:
+- Email marketing integrations
+- CRM integrations
+- SMS or WhatsApp-based promo delivery
+- Webhook-based automation triggers
+
+### 6. Advanced Segmentation
+
+Planned improvements:
+- RFM-style customer scoring
+- Lifecycle-based audience targeting
+- Repeat purchase and churn logic
+- VIP customer automations
+
+### 7. Local / Private AI Support
+
+Possible future direction:
+- Local model support
+- Self-hosted AI inference
+- More privacy-focused deployment options
+
+## Recommended Readme Messaging
+
+For the new readme, the plugin should be presented as:
+
+- An AI-powered WooCommerce coupon assistant
+- A tool for fast coupon creation and editing
+- A lightweight automation system for customer lifecycle coupons
+- A campaign builder for promotional outreach
+
+## Suggested Readme Summary
+
+ZenCoupon AI Assistant helps WooCommerce store owners create, update, and automate coupons using AI. It supports multiple AI providers, offers natural-language coupon generation, includes WooCommerce automation workflows such as first-order and abandoned-cart coupons, and provides a campaign-builder layer for marketing outreach.
+
+## Bottom Line
+
+The current plugin is already more than a basic coupon generator. It has a strong foundation for AI-assisted coupon management and WooCommerce automation, and its upcoming roadmap should focus on deeper marketing automation, reporting, and better customer engagement workflows.
